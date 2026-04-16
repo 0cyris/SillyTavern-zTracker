@@ -6,7 +6,7 @@
     "js": "dist/index.js",
     "css": "dist/style.css",
     "author": "Zaakh",
-    "version": "bugfix-injection-never-system",
+    "version": "1.7.1",
     "homePage": "https://github.com/Zaakh/SillyTavern-zTracker",
     "generate_interceptor": "ztrackerGenerateInterceptor"
 }

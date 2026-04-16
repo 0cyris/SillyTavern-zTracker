@@ -89,13 +89,11 @@ function unregisterExistingMacro(macros: NonNullable<MacroContextLike['macros']>
 }
 
 /** Registers the synchronous zTracker macro used for manual prompt injection. */
-export function registerZTrackerMacro(getContext: () => MacroContextLike, getSettings: MacroSettingsGetter): boolean {
-  const context = getContext() as any;
+export function registerZTrackerMacro(context: any, settings: MacroSettings): boolean {
   const macros = context.macros;
-  const settings = getSettings();
 
   const handler = (macroContext?: { env?: { chat?: MacroTrackerMessageLike[] } }) => {
-    const chat = macroContext?.env?.chat ?? getContext().chat;
+    const chat = macroContext?.env?.chat ?? context.chat;
     if (settings.debugLogging) {
       console.log('[zTracker] Macro handler executed. Chat messages:', chat?.length);
     }

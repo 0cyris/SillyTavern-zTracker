@@ -3644,13 +3644,11 @@ function unregisterExistingMacro(macros) {
   (_macros$unregisterMac = macros.unregisterMacro) === null || _macros$unregisterMac === void 0 || _macros$unregisterMac.call(macros, 'zTracker');
 }
 /** Registers the synchronous zTracker macro used for manual prompt injection. */
-function registerZTrackerMacro(getContext, getSettings) {
-  var context = getContext();
+function registerZTrackerMacro(context, settings) {
   var macros = context.macros;
-  var settings = getSettings();
   var handler = function handler(macroContext) {
     var _macroContext$env$cha, _macroContext$env;
-    var chat = (_macroContext$env$cha = macroContext === null || macroContext === void 0 || (_macroContext$env = macroContext.env) === null || _macroContext$env === void 0 ? void 0 : _macroContext$env.chat) !== null && _macroContext$env$cha !== void 0 ? _macroContext$env$cha : getContext().chat;
+    var chat = (_macroContext$env$cha = macroContext === null || macroContext === void 0 || (_macroContext$env = macroContext.env) === null || _macroContext$env === void 0 ? void 0 : _macroContext$env.chat) !== null && _macroContext$env$cha !== void 0 ? _macroContext$env$cha : context.chat;
     if (settings.debugLogging) {
       console.log('[zTracker] Macro handler executed. Chat messages:', chat === null || chat === void 0 ? void 0 : chat.length);
     }
@@ -7313,11 +7311,7 @@ function _initializeGlobalUI() {
           return actions.renderExtensionTemplates();
         case 1:
           tryRegister = function tryRegister() {
-            var didRegisterMacro = (0, tracker_macro_js_1.registerZTrackerMacro)(function () {
-              return SillyTavern.getContext();
-            }, function () {
-              return settingsManager.getSettings();
-            });
+            var didRegisterMacro = (0, tracker_macro_js_1.registerZTrackerMacro)(SillyTavern.getContext(), settingsManager.getSettings());
             if (didRegisterMacro) {
               console.log('[zTracker] Macro registered successfully.');
             }

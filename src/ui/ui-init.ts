@@ -430,10 +430,7 @@ export async function initializeGlobalUI(options: {
   await actions.renderExtensionTemplates();
 
   const tryRegister = () => {
-    const didRegisterMacro = registerZTrackerMacro(
-      () => SillyTavern.getContext(),
-      () => settingsManager.getSettings(),
-    );
+    const didRegisterMacro = registerZTrackerMacro(SillyTavern.getContext(), settingsManager.getSettings());
     if (didRegisterMacro) {
       console.log('[zTracker] Macro registered successfully.');
     }

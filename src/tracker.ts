@@ -243,12 +243,12 @@ export function includeZTrackerMessages<T extends Message | ChatMessage>(
           0,
           {
             content,
-            role: embedRole,
+            role: "system",
             // These flags are used by SillyTavern Message objects; harmless for ChatMessage.
-            is_user: embedRole === 'user',
-            is_system: embedRole === 'system',
-            is_assistant: embedRole === 'assistant',
-            is_bot: embedRole === 'assistant',
+            //is_user: embedRole === 'user',
+            is_system: true,
+            //is_assistant: embedRole === 'assistant',
+            //is_bot: embedRole === 'assistant',
             ...(speakerName ? { name: speakerName } : {}),
             mes: content,
           } as unknown as T,

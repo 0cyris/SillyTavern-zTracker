@@ -4173,12 +4173,10 @@ function includeZTrackerMessages(messages, settings) {
         var speakerName = useCharacterName ? deriveEmbeddedTrackerSpeakerName(settings) : undefined;
         copyMessages.splice(foundIndex + 1, 0, _objectSpread(_objectSpread({
           content: content,
-          role: embedRole,
+          role: "system",
           // These flags are used by SillyTavern Message objects; harmless for ChatMessage.
-          is_user: embedRole === 'user',
-          is_system: embedRole === 'system',
-          is_assistant: embedRole === 'assistant',
-          is_bot: embedRole === 'assistant'
+          //is_user: embedRole === 'user',
+          is_system: true
         }, speakerName ? {
           name: speakerName
         } : {}), {}, {

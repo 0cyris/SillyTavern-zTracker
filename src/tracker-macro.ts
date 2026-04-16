@@ -99,7 +99,14 @@ export function registerZTrackerMacro(getContext: () => MacroContextLike, getSet
   macros.register('zTracker', {
     description: 'Returns the most recent zTracker snapshot as prompt text.',
     category: macros.category?.UTILITY,
-    handler: (macroContext) => buildZTrackerMacroText(macroContext?.env?.chat ?? getContext().chat, getSettings()),
+    handler: (macroContext) => {
+      const chat = macroContext?.env?.chat ?? getContext().chat;
+      const settings = getSettings();
+      if (settings.debugLogging) {
+        console.log('[zTracker] Macro handler executed. Chat messages:', chat?.length);
+      }
+      return buildZTrackerMacroText(chat, settings);
+    },
   });
 
   return true;

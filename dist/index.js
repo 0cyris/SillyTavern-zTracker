@@ -2313,6 +2313,7 @@ var __importDefault = this && this.__importDefault || function (mod) {
 Object.defineProperty(exports, "__esModule", ({
   value: true
 }));
+exports.onActivate = onActivate;
 var jsx_runtime_1 = __webpack_require__(/*! react/jsx-runtime */ "./node_modules/react/jsx-runtime.js");
 var react_1 = __importDefault(__webpack_require__(/*! react */ "./node_modules/react/index.js"));
 var client_1 = __webpack_require__(/*! react-dom/client */ "./node_modules/react-dom/client.js");
@@ -2324,6 +2325,7 @@ var config_js_1 = __webpack_require__(/*! ./config.js */ "./src/config.ts");
 var tracker_actions_js_1 = __webpack_require__(/*! ./ui/tracker-actions.js */ "./src/ui/tracker-actions.ts");
 var ui_init_js_1 = __webpack_require__(/*! ./ui/ui-init.js */ "./src/ui/ui-init.ts");
 var system_prompt_js_1 = __webpack_require__(/*! ./system-prompt.js */ "./src/system-prompt.ts");
+var tracker_macro_js_1 = __webpack_require__(/*! ./tracker-macro.js */ "./src/tracker-macro.ts");
 var tracker_js_1 = __webpack_require__(/*! ./tracker.js */ "./src/tracker.ts");
 // --- Constants and Globals ---
 var globalContext = SillyTavern.getContext();
@@ -2364,27 +2366,56 @@ function renderReactSettings() {
     children: (0, jsx_runtime_1.jsx)(Settings_js_1.ZTrackerSettings, {})
   }));
 }
+function onActivate() {
+  return _onActivate.apply(this, arguments);
+}
+function _onActivate() {
+  _onActivate = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
+    var didRegisterMacro;
+    return _regenerator().w(function (_context) {
+      while (1) switch (_context.n) {
+        case 0:
+          _context.n = 1;
+          return Settings_js_1.settingsManager.initializeSettings();
+        case 1:
+          didRegisterMacro = (0, tracker_macro_js_1.registerZTrackerMacro)(function () {
+            return SillyTavern.getContext();
+          }, function () {
+            return Settings_js_1.settingsManager.getSettings();
+          });
+          if (didRegisterMacro) {
+            console.log('[zTracker] Macro registered during activation.');
+          } else {
+            console.warn('[zTracker] Macro registration failed during activation.');
+          }
+        case 2:
+          return _context.a(2);
+      }
+    }, _callee);
+  }));
+  return _onActivate.apply(this, arguments);
+}
 function main() {
   return _main.apply(this, arguments);
 }
 function _main() {
-  _main = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
+  _main = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee2() {
     var actions, _t;
-    return _regenerator().w(function (_context) {
-      while (1) switch (_context.p = _context.n) {
+    return _regenerator().w(function (_context2) {
+      while (1) switch (_context2.p = _context2.n) {
         case 0:
           if ((0, config_js_1.migrateLegacyPromptTemplates)(Settings_js_1.settingsManager.getSettings())) {
             Settings_js_1.settingsManager.saveSettings();
           }
-          _context.p = 1;
-          _context.n = 2;
+          _context2.p = 1;
+          _context2.n = 2;
           return (0, system_prompt_js_1.ensureZTrackerSystemPromptPresetInstalled)();
         case 2:
-          _context.n = 4;
+          _context2.n = 4;
           break;
         case 3:
-          _context.p = 3;
-          _t = _context.v;
+          _context2.p = 3;
+          _t = _context2.v;
           console.warn('zTracker: failed to ensure the recommended system prompt preset exists.', _t);
         case 4:
           actions = (0, tracker_actions_js_1.createTrackerActions)({
@@ -2403,9 +2434,9 @@ function _main() {
             renderTrackerWithDeps: renderTrackerWithDeps
           });
         case 5:
-          return _context.a(2);
+          return _context2.a(2);
       }
-    }, _callee, null, [[1, 3]]);
+    }, _callee2, null, [[1, 3]]);
   }));
   return _main.apply(this, arguments);
 }
@@ -3654,7 +3685,12 @@ function registerZTrackerMacro(getContext, getSettings) {
     category: (_macros$category = macros.category) === null || _macros$category === void 0 ? void 0 : _macros$category.UTILITY,
     handler: function handler(macroContext) {
       var _macroContext$env$cha, _macroContext$env;
-      return buildZTrackerMacroText((_macroContext$env$cha = macroContext === null || macroContext === void 0 || (_macroContext$env = macroContext.env) === null || _macroContext$env === void 0 ? void 0 : _macroContext$env.chat) !== null && _macroContext$env$cha !== void 0 ? _macroContext$env$cha : getContext().chat, getSettings());
+      var chat = (_macroContext$env$cha = macroContext === null || macroContext === void 0 || (_macroContext$env = macroContext.env) === null || _macroContext$env === void 0 ? void 0 : _macroContext$env.chat) !== null && _macroContext$env$cha !== void 0 ? _macroContext$env$cha : getContext().chat;
+      var settings = getSettings();
+      if (settings.debugLogging) {
+        console.log('[zTracker] Macro handler executed. Chat messages:', chat === null || chat === void 0 ? void 0 : chat.length);
+      }
+      return buildZTrackerMacroText(chat, settings);
     }
   });
   return true;
@@ -7123,7 +7159,7 @@ function initializeGlobalUI(_x) {
 function _initializeGlobalUI() {
   _initializeGlobalUI = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee(options) {
     var _document$querySelect2;
-    var globalContext, settingsManager, actions, renderTrackerWithDeps, characterPanelButtonSyncTimer, observedCharacterPanel, characterPanelObserver, attachCharacterPanelObserver, scheduleCharacterPanelButtonSync, observer, zTrackerIcon;
+    var globalContext, settingsManager, actions, renderTrackerWithDeps, characterPanelButtonSyncTimer, observedCharacterPanel, characterPanelObserver, attachCharacterPanelObserver, scheduleCharacterPanelButtonSync, observer, zTrackerIcon, didRegisterMacro;
     return _regenerator().w(function (_context) {
       while (1) switch (_context.n) {
         case 0:
@@ -7295,11 +7331,14 @@ function _initializeGlobalUI() {
           _context.n = 1;
           return actions.renderExtensionTemplates();
         case 1:
-          (0, tracker_macro_js_1.registerZTrackerMacro)(function () {
+          didRegisterMacro = (0, tracker_macro_js_1.registerZTrackerMacro)(function () {
             return SillyTavern.getContext();
           }, function () {
             return settingsManager.getSettings();
           });
+          if (!didRegisterMacro) {
+            console.warn('[zTracker] Macro registration returned false (macros.register might not be available yet).');
+          }
           globalContext.eventSource.on(types_1.EventNames.CHARACTER_MESSAGE_RENDERED, function (messageId) {
             var settings = settingsManager.getSettings();
             if (!incomingTypes.includes(settings.autoMode)) return;

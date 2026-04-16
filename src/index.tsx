@@ -8,6 +8,7 @@ import { migrateLegacyPromptTemplates } from './config.js';
 import { createTrackerActions } from './ui/tracker-actions.js';
 import { initializeGlobalUI } from './ui/ui-init.js';
 import { ensureZTrackerSystemPromptPresetInstalled } from './system-prompt.js';
+import { registerZTrackerMacro } from './tracker-macro.js';
 import {
   renderTracker,
 } from './tracker.js';
@@ -53,6 +54,19 @@ function renderReactSettings() {
       <ZTrackerSettings />
     </React.StrictMode>,
   );
+}
+
+export async function onActivate() {
+  await settingsManager.initializeSettings();
+  const didRegisterMacro = registerZTrackerMacro(
+    () => SillyTavern.getContext(),
+    () => settingsManager.getSettings(),
+  );
+  if (didRegisterMacro) {
+    console.log('[zTracker] Macro registered during activation.');
+  } else {
+    console.warn('[zTracker] Macro registration failed during activation.');
+  }
 }
 
 async function main() {

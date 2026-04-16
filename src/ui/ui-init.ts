@@ -429,10 +429,14 @@ export async function initializeGlobalUI(options: {
 
   await actions.renderExtensionTemplates();
 
-  registerZTrackerMacro(
+  const didRegisterMacro = registerZTrackerMacro(
     () => SillyTavern.getContext(),
     () => settingsManager.getSettings(),
   );
+  if (!didRegisterMacro) {
+    console.warn('[zTracker] Macro registration returned false (macros.register might not be available yet).');
+  }
+
 
   globalContext.eventSource.on(
     EventNames.CHARACTER_MESSAGE_RENDERED,

@@ -125,7 +125,15 @@ Continue the response using the tracker above.
 
 This avoids reliance on the chat-array injection path and makes tracker inclusion explicit in the prompt body.
 
-### 7. Relationship to existing injection settings
+### 7. Availability boundary
+
+The `{{zTracker}}` macro is intended for user-authored prompt/template text that is processed before zTracker assembles or submits its own request.
+
+That includes supported SillyTavern template surfaces and any external prompt text that zTracker feeds through the same synchronous macro-expansion helper before compiling the final request payload.
+
+It does **not** change the internal zTracker Handlebars templates themselves; those continue to render `schema` and `example_response` as before.
+
+### 8. Relationship to existing injection settings
 
 The macro should not replace or alter:
 

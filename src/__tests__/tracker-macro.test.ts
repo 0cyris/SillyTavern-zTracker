@@ -1,7 +1,12 @@
 import { jest } from '@jest/globals';
 import { EXTENSION_KEY } from '../extension-metadata.js';
 import { CHAT_MESSAGE_SCHEMA_VALUE_KEY } from '../tracker.js';
-import { buildZTrackerMacroText, findLatestTrackerMessage, registerZTrackerMacro } from '../tracker-macro.js';
+import {
+  buildZTrackerMacroText,
+  expandZTrackerMacrosInText,
+  findLatestTrackerMessage,
+  registerZTrackerMacro,
+} from '../tracker-macro.js';
 
 describe('tracker macro helpers', () => {
   test('finds the latest tracker-bearing message', () => {
@@ -111,5 +116,43 @@ describe('tracker macro helpers', () => {
     expect(didRegister).toBe(true);
     expect(unregisterMacro).toHaveBeenCalledWith('zTracker');
     expect(register).toHaveBeenCalledWith('zTracker', expect.objectContaining({ description: expect.any(String) }));
+  });
+
+  test('expands zTracker tokens in external prompt text before Handlebars rendering', () => {
+    const rendered = expandZTrackerMacrosInText(
+      'System\n{{zTracker}}\nEnd',
+      [
+        {
+          role: 'assistant',
+          content: 'base',
+          extra: {
+            [EXTENSION_KEY]: {
+              [CHAT_MESSAGE_SCHEMA_VALUE_KEY]: { id: 2, name: 'Bar' },
+            },
+          },
+        },
+      ] as any,
+      {
+        embedZTrackerSnapshotHeader: 'Tracker:',
+        embedZTrackerSnapshotTransformPreset: 'default',
+        embedZTrackerSnapshotTransformPresets: {
+          default: {
+            name: 'Default',
+            input: 'pretty_json',
+            pattern: '',
+            flags: 'g',
+            replacement: '',
+            codeFenceLang: 'json',
+            wrapInCodeFence: true,
+          },
+        },
+        debugLogging: false,
+      },
+    );
+
+    expect(rendered).toContain('System');
+    expect(rendered).toContain('Tracker:');
+    expect(rendered).toContain('"name": "Bar"');
+    expect(rendered).toContain('End');
   });
 });

@@ -3591,6 +3591,7 @@ Object.defineProperty(exports, "__esModule", ({
 }));
 exports.findLatestTrackerMessage = findLatestTrackerMessage;
 exports.buildZTrackerMacroText = buildZTrackerMacroText;
+exports.expandZTrackerMacrosInText = expandZTrackerMacrosInText;
 exports.registerZTrackerMacro = registerZTrackerMacro;
 var config_js_1 = __webpack_require__(/*! ./config.js */ "./src/config.ts");
 var extension_metadata_js_1 = __webpack_require__(/*! ./extension-metadata.js */ "./src/extension-metadata.ts");
@@ -3627,6 +3628,14 @@ function buildZTrackerMacroText(messages, settings) {
   var header = (_settings$embedZTrack = settings.embedZTrackerSnapshotHeader) !== null && _settings$embedZTrack !== void 0 ? _settings$embedZTrack : config_js_1.DEFAULT_EMBED_SNAPSHOT_HEADER;
   var prefix = header ? "".concat(header, "\n") : '';
   return wrapInCodeFence ? "".concat(prefix, "```").concat(lang, "\n").concat(text, "\n```") : "".concat(prefix).concat(text);
+}
+/** Expands any `{{zTracker}}` tags in plain prompt text before zTracker compiles or sends it. */
+function expandZTrackerMacrosInText(text, messages, settings) {
+  if (!text.includes('{{zTracker')) {
+    return text;
+  }
+  var trackerText = buildZTrackerMacroText(messages, settings);
+  return text.replace(/\{\{\s*zTracker\s*\}\}/g, trackerText);
 }
 function unregisterExistingMacro(macros) {
   var _macros$registry, _macros$registry$unre, _macros$unregisterMac;
@@ -4734,6 +4743,7 @@ var handlebars_1 = __importDefault(__webpack_require__(/*! handlebars */ "./node
 var config_js_1 = __webpack_require__(/*! ../config.js */ "./src/config.ts");
 var parser_js_1 = __webpack_require__(/*! ../parser.js */ "./src/parser.ts");
 var schema_to_example_js_1 = __webpack_require__(/*! ../schema-to-example.js */ "./src/schema-to-example.ts");
+var tracker_macro_js_1 = __webpack_require__(/*! ../tracker-macro.js */ "./src/tracker-macro.ts");
 /**
  * Encapsulates prompt-engineering request assembly and malformed-payload diagnostics.
  * A dedicated helper keeps tracker-actions focused on action orchestration rather than payload bookkeeping.
@@ -4816,6 +4826,7 @@ function createPromptEngineeringHelpers() {
         promptTemplate,
         exampleResponse,
         promptSchema,
+        expandedPromptTemplate,
         finalPrompt,
         response,
         parsedContent,
@@ -4835,7 +4846,8 @@ function createPromptEngineeringHelpers() {
             promptTemplate = getPromptEngineeringTemplate(settings, format);
             exampleResponse = (0, schema_to_example_js_1.schemaToExample)(schema, format);
             promptSchema = (0, schema_to_example_js_1.schemaToPromptSchema)(schema, format);
-            finalPrompt = handlebars_1["default"].compile(promptTemplate, {
+            expandedPromptTemplate = (0, tracker_macro_js_1.expandZTrackerMacrosInText)(promptTemplate, requestMessages, settings);
+            finalPrompt = handlebars_1["default"].compile(expandedPromptTemplate, {
               noEscape: true,
               strict: true
             })({

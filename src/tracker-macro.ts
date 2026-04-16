@@ -69,6 +69,20 @@ export function buildZTrackerMacroText(messages: MacroTrackerMessageLike[] | und
   return wrapInCodeFence ? `${prefix}\`\`\`${lang}\n${text}\n\`\`\`` : `${prefix}${text}`;
 }
 
+/** Expands any `{{zTracker}}` tags in plain prompt text before zTracker compiles or sends it. */
+export function expandZTrackerMacrosInText(
+  text: string,
+  messages: MacroTrackerMessageLike[] | undefined,
+  settings: MacroSettings,
+): string {
+  if (!text.includes('{{zTracker')) {
+    return text;
+  }
+
+  const trackerText = buildZTrackerMacroText(messages, settings);
+  return text.replace(/\{\{\s*zTracker\s*\}\}/g, trackerText);
+}
+
 function unregisterExistingMacro(macros: NonNullable<MacroContextLike['macros']>): void {
   macros.registry?.unregisterMacro?.('zTracker');
   macros.unregisterMacro?.('zTracker');

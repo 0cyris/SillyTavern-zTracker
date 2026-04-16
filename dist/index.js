@@ -4175,11 +4175,13 @@ function includeZTrackerMessages(messages, settings) {
           content: content,
           role: "system",
           // These flags are used by SillyTavern Message objects; harmless for ChatMessage.
-          //is_user: embedRole === 'user',
+          is_user: false,
           is_system: true
         }, speakerName ? {
           name: speakerName
-        } : {}), {}, {
+        } : {
+          name: "System"
+        }), {}, {
           mes: content
         }));
       }

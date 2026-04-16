@@ -2369,31 +2369,11 @@ function main() {
 }
 function _main() {
   _main = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
-    var _context$macros, context, actions, _t;
+    var actions, _t;
     return _regenerator().w(function (_context) {
       while (1) switch (_context.p = _context.n) {
         case 0:
           console.log('[zTracker] Main function reached.');
-          // STUB: Minimal registration directly in main loop
-          try {
-            context = SillyTavern.getContext();
-            if ((_context$macros = context.macros) !== null && _context$macros !== void 0 && _context$macros.register) {
-              context.macros.register('zHello', {
-                description: 'Minimal stub',
-                handler: function handler() {
-                  return 'Hello from zTracker stub!';
-                }
-              });
-              console.log('[zTracker] Stub {{zHello}} registered via modern API');
-            } else if (typeof context.registerMacro === 'function') {
-              context.registerMacro('zHello', function () {
-                return 'Hello from zTracker legacy stub!';
-              });
-              console.log('[zTracker] Stub {{zHello}} registered via legacy API');
-            }
-          } catch (e) {
-            console.error('[zTracker] Failed to register stub macro:', e);
-          }
           if ((0, config_js_1.migrateLegacyPromptTemplates)(Settings_js_1.settingsManager.getSettings())) {
             Settings_js_1.settingsManager.saveSettings();
           }
@@ -3665,25 +3645,34 @@ function unregisterExistingMacro(macros) {
 }
 /** Registers the synchronous zTracker macro used for manual prompt injection. */
 function registerZTrackerMacro(getContext, getSettings) {
-  var _macros$category;
   var context = getContext();
   var macros = context.macros;
-  if (!(macros !== null && macros !== void 0 && macros.register)) return false;
-  unregisterExistingMacro(macros);
-  macros.register('zTracker', {
-    description: 'Returns the most recent zTracker snapshot as prompt text.',
-    category: (_macros$category = macros.category) === null || _macros$category === void 0 ? void 0 : _macros$category.UTILITY,
-    handler: function handler(macroContext) {
-      var _macroContext$env$cha, _macroContext$env;
-      var chat = (_macroContext$env$cha = macroContext === null || macroContext === void 0 || (_macroContext$env = macroContext.env) === null || _macroContext$env === void 0 ? void 0 : _macroContext$env.chat) !== null && _macroContext$env$cha !== void 0 ? _macroContext$env$cha : getContext().chat;
-      var settings = getSettings();
-      if (settings.debugLogging) {
-        console.log('[zTracker] Macro handler executed. Chat messages:', chat === null || chat === void 0 ? void 0 : chat.length);
-      }
-      return buildZTrackerMacroText(chat, settings);
+  var settings = getSettings();
+  var handler = function handler(macroContext) {
+    var _macroContext$env$cha, _macroContext$env;
+    var chat = (_macroContext$env$cha = macroContext === null || macroContext === void 0 || (_macroContext$env = macroContext.env) === null || _macroContext$env === void 0 ? void 0 : _macroContext$env.chat) !== null && _macroContext$env$cha !== void 0 ? _macroContext$env$cha : getContext().chat;
+    if (settings.debugLogging) {
+      console.log('[zTracker] Macro handler executed. Chat messages:', chat === null || chat === void 0 ? void 0 : chat.length);
     }
-  });
-  return true;
+    return buildZTrackerMacroText(chat, settings);
+  };
+  // 1. Try modern API
+  if (macros !== null && macros !== void 0 && macros.register) {
+    var _macros$category;
+    unregisterExistingMacro(macros);
+    macros.register('zTracker', {
+      description: 'Returns the most recent zTracker snapshot as prompt text.',
+      category: (_macros$category = macros.category) === null || _macros$category === void 0 ? void 0 : _macros$category.UTILITY,
+      handler: handler
+    });
+    return true;
+  }
+  // 2. Fallback to legacy API
+  if (typeof context.registerMacro === 'function') {
+    context.registerMacro('zTracker', handler);
+    return true;
+  }
+  return false;
 }
 
 /***/ },

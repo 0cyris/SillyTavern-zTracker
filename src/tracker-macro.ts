@@ -90,24 +90,34 @@ function unregisterExistingMacro(macros: NonNullable<MacroContextLike['macros']>
 
 /** Registers the synchronous zTracker macro used for manual prompt injection. */
 export function registerZTrackerMacro(getContext: () => MacroContextLike, getSettings: MacroSettingsGetter): boolean {
-  const context = getContext();
+  const context = getContext() as any;
   const macros = context.macros;
-  if (!macros?.register) return false;
+  const settings = getSettings();
 
-  unregisterExistingMacro(macros);
+  const handler = (macroContext?: { env?: { chat?: MacroTrackerMessageLike[] } }) => {
+    const chat = macroContext?.env?.chat ?? getContext().chat;
+    if (settings.debugLogging) {
+      console.log('[zTracker] Macro handler executed. Chat messages:', chat?.length);
+    }
+    return buildZTrackerMacroText(chat, settings);
+  };
 
-  macros.register('zTracker', {
-    description: 'Returns the most recent zTracker snapshot as prompt text.',
-    category: macros.category?.UTILITY,
-    handler: (macroContext) => {
-      const chat = macroContext?.env?.chat ?? getContext().chat;
-      const settings = getSettings();
-      if (settings.debugLogging) {
-        console.log('[zTracker] Macro handler executed. Chat messages:', chat?.length);
-      }
-      return buildZTrackerMacroText(chat, settings);
-    },
-  });
+  // 1. Try modern API
+  if (macros?.register) {
+    unregisterExistingMacro(macros);
+    macros.register('zTracker', {
+      description: 'Returns the most recent zTracker snapshot as prompt text.',
+      category: macros.category?.UTILITY,
+      handler,
+    });
+    return true;
+  }
 
-  return true;
+  // 2. Fallback to legacy API
+  if (typeof context.registerMacro === 'function') {
+    context.registerMacro('zTracker', handler);
+    return true;
+  }
+
+  return false;
 }

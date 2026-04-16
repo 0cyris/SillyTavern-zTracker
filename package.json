@@ -1,6 +1,6 @@
 {
     "name": "sillytavern-ztracker",
-    "version": "1.7.0",
+    "version": "bugfix-injection-never-system",
     "description": "SillyTavern zTracker extension.",
     "type": "module",
     "main": "src/scripts/main.js",

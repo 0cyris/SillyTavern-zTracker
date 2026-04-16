@@ -8,9 +8,9 @@
         "sync-version": "node scripts/sync-version.mjs",
         "copy-templates": "node scripts/copy-templates.mjs",
         "predev": "npm run sync-version && npm run copy-templates",
-        "dev": "cross-env NODE_ENV=development sass src/styles/main.scss dist/style.css --source-map & cross-env NODE_ENV=development webpack --mode development --config webpack.config.cjs --watch",
+        "dev": "NODE_ENV=development sass src/styles/main.scss dist/style.css --source-map & NODE_ENV=development webpack --mode development --config webpack.config.cjs --watch",
         "prebuild": "npm run sync-version && npm run copy-templates",
-        "build": "cross-env NODE_ENV=production sass src/styles/main.scss dist/style.css --no-source-map && cross-env NODE_ENV=production webpack --mode production --config webpack.config.cjs",
+        "build": "NODE_ENV=production sass src/styles/main.scss dist/style.css --no-source-map && NODE_ENV=production webpack --mode production --config webpack.config.cjs",
         "pretest": "npm run sync-version",
         "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
         "debug:tracker-context:json": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --testMatch \"<rootDir>/scripts/debug-tracker-context-json.ts\" --silent=false",
@@ -47,6 +47,7 @@
         "ts-jest": "^29.2.5",
         "ts-loader": "^9.5.2",
         "typescript": "^5.7.3",
+        "webpack": "^5.106.2",
         "webpack-cli": "^5.1.4"
     },
     "dependencies": {

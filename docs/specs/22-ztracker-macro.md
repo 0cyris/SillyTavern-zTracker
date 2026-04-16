@@ -22,6 +22,7 @@ A macro gives users a deterministic, template-level way to include tracker conte
 ## Scope
 
 - Register a synchronous SillyTavern macro that expands to zTracker tracker text.
+- Support both the modern `macros.register()` API and the legacy `registerMacro()` API for version compatibility.
 - Provide a predictable default expansion with no arguments, e.g. `{{zTracker}}`.
 - Optionally support a small argument surface for format or presentation choices.
 - Keep the existing generate-interceptor injection path intact.
@@ -71,10 +72,10 @@ The macro should read from the active chat context and locate the tracker data c
 Preferred source order:
 
 1. The tracker already attached to the current target message, if the macro is invoked in a message-scoped context.
-2. The most recent tracker-bearing message in the active chat.
+2. The most recent tracker-bearing message found by searching the active chat history backwards.
 3. A graceful empty string if no tracker exists.
 
-If the SillyTavern macro environment exposes message/chat context, the handler should use that context first rather than relying on hidden globals.
+If the SillyTavern macro environment exposes message/chat context, the handler should use that context first; otherwise, it should fall back to the global `SillyTavern.getContext().chat`.
 
 ### 3. Return shape
 
@@ -107,9 +108,11 @@ Register the macro during extension startup from the UI init path in [`src/ui/ui
 
 Recommended lifecycle:
 
-1. On init, register `zTracker`.
-2. If the macro already exists, either replace it explicitly or unregister first, depending on the SillyTavern API semantics.
-3. On unload or reinit, unregister or overwrite safely to avoid duplicate registrations.
+1. On init, attempt to register `zTracker` using the modern API.
+2. If the modern API is not yet available, listen for the `APP_READY` event and retry registration.
+3. Fall back to the legacy `registerMacro` API if the modern system is unavailable in the current SillyTavern version.
+4. If the macro already exists, either replace it explicitly or unregister first, depending on the SillyTavern API semantics.
+5. On unload or reinit, unregister or overwrite safely to avoid duplicate registrations.
 
 ### 6. Manual prompt injection use case
 
@@ -159,6 +162,7 @@ Instead, it should reuse those settings as the source of truth for formatting wh
 ## Implementation notes
 
 - The handler must be synchronous because SillyTavern macro handlers cannot return promises.
+- The registration logic should be registry-agnostic, handling both modern and legacy SillyTavern APIs internally.
 - Keep the macro logic in an import-safe helper so tests can exercise it without booting the full extension.
 - Prefer reuse of existing tracker formatting helpers over duplicating embed formatting logic.
 - Keep the macro output deterministic so it can be covered with snapshot tests.
@@ -167,7 +171,8 @@ Instead, it should reuse those settings as the source of truth for formatting wh
 
 | File | Intended change |
 |---|---|
-| [`src/ui/ui-init.ts`](src/ui/ui-init.ts:228-485) | Register and unregister the macro during extension lifecycle setup. |
+| [`src/ui/ui-init.ts`](src/ui/ui-init.ts:228-485) | Trigger macro registration on init or `APP_READY`. |
+| [`src/tracker-macro.ts`](src/tracker-macro.ts:1) | Implement registry-agnostic registration and the expansion handler. |
 | [`src/embed-snapshot-transform.ts`](src/embed-snapshot-transform.ts:1) | Reuse the existing tracker formatting helpers for macro output. |
 | [`src/tracker.ts`](src/tracker.ts:187-260) | Optionally expose a helper that resolves the latest tracker-bearing message for macro use. |
 | [`src/__tests__/`](src/__tests__) | Add tests for macro registration and returned text. |
@@ -176,7 +181,8 @@ Instead, it should reuse those settings as the source of truth for formatting wh
 
 ## Acceptance criteria
 
-- [`zTracker`](docs/specs/22-ztracker-macro.md) macro can be registered through `SillyTavern.getContext().macros.register()`.
+- `zTracker` macro can be registered through `SillyTavern.getContext().macros.register()` or `registerMacro()`.
+- The macro handles registration timing appropriately (e.g., retrying on `APP_READY`).
 - The macro returns deterministic tracker text in a synchronous handler.
 - Users can place the macro in a prompt template and manually inject tracker context.
 - The macro does not break the existing interceptor-based embedding flow.
@@ -184,13 +190,14 @@ Instead, it should reuse those settings as the source of truth for formatting wh
 
 ## Tasks checklist
 
-- [ ] Decide the macro name and argument surface
-- [ ] Define the tracker source-of-truth helper for macro expansion
-- [ ] Implement macro registration in UI init
-- [ ] Add lifecycle cleanup or safe overwrite behavior
-- [ ] Add tests for macro output and registration
+- [x] Decide the macro name and argument surface
+- [x] Define the tracker source-of-truth helper for macro expansion
+- [x] Implement registry-agnostic macro registration
+- [x] Add retry logic for `APP_READY` availability
+- [x] Add lifecycle cleanup or safe overwrite behavior
+- [x] Add tests for macro output and registration
 - [ ] Document the macro in developer and user docs
-- [ ] Smoke test the macro in a live SillyTavern prompt template
+- [x] Smoke test the macro in a live SillyTavern prompt template
 
 ## Verification plan
 

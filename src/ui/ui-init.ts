@@ -431,7 +431,7 @@ export async function initializeGlobalUI(options: {
 
   const tryRegister = () => {
     const didRegisterMacro = registerZTrackerMacro(
-      () => SillyTavern.getContext(),
+      () => globalContext,
       () => settingsManager.getSettings(),
     );
     if (didRegisterMacro) {

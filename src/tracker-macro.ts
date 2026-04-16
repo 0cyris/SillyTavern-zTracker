@@ -1,7 +1,9 @@
 import type { ExtensionSettings } from './config.js';
 import { DEFAULT_EMBED_SNAPSHOT_HEADER } from './config.js';
-import { EXTENSION_KEY } from './extension-metadata.js';
-import { CHAT_MESSAGE_SCHEMA_VALUE_KEY } from './tracker.js';
+import {
+  EXTENSION_KEY,
+  CHAT_MESSAGE_SCHEMA_VALUE_KEY,
+} from './extension-metadata.js';
 import { formatEmbeddedTrackerSnapshot } from './embed-snapshot-transform.js';
 
 type MacroTrackerMessageLike = {

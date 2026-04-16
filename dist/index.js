@@ -3665,11 +3665,13 @@ function registerZTrackerMacro(getContext, getSettings) {
       category: (_macros$category = macros.category) === null || _macros$category === void 0 ? void 0 : _macros$category.UTILITY,
       handler: handler
     });
+    console.log('[zTracker] Macro {{zTracker}} registered via modern API');
     return true;
   }
   // 2. Fallback to legacy API
   if (typeof context.registerMacro === 'function') {
     context.registerMacro('zTracker', handler);
+    console.log('[zTracker] Macro {{zTracker}} registered via legacy API');
     return true;
   }
   return false;

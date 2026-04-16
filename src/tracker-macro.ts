@@ -110,12 +110,14 @@ export function registerZTrackerMacro(getContext: () => MacroContextLike, getSet
       category: macros.category?.UTILITY,
       handler,
     });
+    console.log('[zTracker] Macro {{zTracker}} registered via modern API');
     return true;
   }
 
   // 2. Fallback to legacy API
   if (typeof context.registerMacro === 'function') {
     context.registerMacro('zTracker', handler);
+    console.log('[zTracker] Macro {{zTracker}} registered via legacy API');
     return true;
   }
 

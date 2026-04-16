@@ -8,8 +8,5 @@
     "author": "Zaakh",
     "version": "1.7.1",
     "homePage": "https://github.com/0cyris/SillyTavern-zTracker",
-    "generate_interceptor": "ztrackerGenerateInterceptor",
-    "hooks": {
-        "activate": "onActivate"
-    }
+    "generate_interceptor": "ztrackerGenerateInterceptor"
 }

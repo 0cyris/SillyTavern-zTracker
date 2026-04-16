@@ -429,12 +429,23 @@ export async function initializeGlobalUI(options: {
 
   await actions.renderExtensionTemplates();
 
-  const didRegisterMacro = registerZTrackerMacro(
-    () => SillyTavern.getContext(),
-    () => settingsManager.getSettings(),
-  );
-  if (!didRegisterMacro) {
-    console.warn('[zTracker] Macro registration returned false (macros.register might not be available yet).');
+  const tryRegister = () => {
+    const didRegisterMacro = registerZTrackerMacro(
+      () => SillyTavern.getContext(),
+      () => settingsManager.getSettings(),
+    );
+    if (didRegisterMacro) {
+      console.log('[zTracker] Macro registered successfully.');
+    }
+    return didRegisterMacro;
+  };
+
+  if (!tryRegister()) {
+    console.log('[zTracker] Modern macro API not ready, waiting for APP_READY...');
+    globalContext.eventSource.on(EventNames.APP_READY, () => {
+      console.log('[zTracker] APP_READY fired, retrying macro registration...');
+      tryRegister();
+    });
   }
 
 

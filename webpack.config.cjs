@@ -16,10 +16,6 @@ module.exports = {
     },
     externalsType: 'module',
     externals: [
-        'react',
-        'react-dom',
-        'react-dom/client',
-        'react/jsx-runtime',
         function({ context, request }, callback) {
             if (request.includes('../../..')) {
                 // Return the path as an external module import

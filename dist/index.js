@@ -2369,11 +2369,31 @@ function main() {
 }
 function _main() {
   _main = _asyncToGenerator(/*#__PURE__*/_regenerator().m(function _callee() {
-    var actions, _t;
+    var _context$macros, context, actions, _t;
     return _regenerator().w(function (_context) {
       while (1) switch (_context.p = _context.n) {
         case 0:
           console.log('[zTracker] Main function reached.');
+          // STUB: Minimal registration directly in main loop
+          try {
+            context = SillyTavern.getContext();
+            if ((_context$macros = context.macros) !== null && _context$macros !== void 0 && _context$macros.register) {
+              context.macros.register('zHello', {
+                description: 'Minimal stub',
+                handler: function handler() {
+                  return 'Hello from zTracker stub!';
+                }
+              });
+              console.log('[zTracker] Stub {{zHello}} registered via modern API');
+            } else if (typeof context.registerMacro === 'function') {
+              context.registerMacro('zHello', function () {
+                return 'Hello from zTracker legacy stub!';
+              });
+              console.log('[zTracker] Stub {{zHello}} registered via legacy API');
+            }
+          } catch (e) {
+            console.error('[zTracker] Failed to register stub macro:', e);
+          }
           if ((0, config_js_1.migrateLegacyPromptTemplates)(Settings_js_1.settingsManager.getSettings())) {
             Settings_js_1.settingsManager.saveSettings();
           }

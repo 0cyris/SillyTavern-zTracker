@@ -58,6 +58,24 @@ function renderReactSettings() {
 
 async function main() {
   console.log('[zTracker] Main function reached.');
+
+  // STUB: Minimal registration directly in main loop
+  try {
+      const context = SillyTavern.getContext() as any;
+      if (context.macros?.register) {
+          context.macros.register('zHello', {
+              description: 'Minimal stub',
+              handler: () => 'Hello from zTracker stub!',
+          });
+          console.log('[zTracker] Stub {{zHello}} registered via modern API');
+      } else if (typeof context.registerMacro === 'function') {
+          context.registerMacro('zHello', () => 'Hello from zTracker legacy stub!');
+          console.log('[zTracker] Stub {{zHello}} registered via legacy API');
+      }
+  } catch (e) {
+      console.error('[zTracker] Failed to register stub macro:', e);
+  }
+
   if (migrateLegacyPromptTemplates(settingsManager.getSettings())) {
     settingsManager.saveSettings();
   }

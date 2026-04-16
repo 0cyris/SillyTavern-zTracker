@@ -6,6 +6,7 @@ import { EventNames } from 'sillytavern-utils-lib/types';
 import type { ExtensionSettingsManager } from 'sillytavern-utils-lib';
 import type { TrackerActions } from './tracker-actions.js';
 import { includeZTrackerMessages } from '../tracker.js';
+import { registerZTrackerMacro } from '../tracker-macro.js';
 import { st_echo } from 'sillytavern-utils-lib/config';
 import {
   shouldAutoGenerateForCharacterMessage,
@@ -427,6 +428,11 @@ export async function initializeGlobalUI(options: {
   });
 
   await actions.renderExtensionTemplates();
+
+  registerZTrackerMacro(
+    () => SillyTavern.getContext(),
+    () => settingsManager.getSettings(),
+  );
 
   globalContext.eventSource.on(
     EventNames.CHARACTER_MESSAGE_RENDERED,

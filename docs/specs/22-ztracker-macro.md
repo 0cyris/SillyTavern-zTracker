@@ -1,6 +1,6 @@
 # Spec: zTracker prompt macro for manual tracker injection
 
-Status: Open
+Status: In Progress
 Last updated: 2026-04-16
 
 ## Summary
@@ -138,15 +138,15 @@ Instead, it should reuse those settings as the source of truth for formatting wh
 ## Open questions
 
 1. Should `{{zTracker}}` emit the latest rendered snapshot only, or should it synthesize from the raw tracker object every time?
-    use the latest rendered snapshot only.
+   - Use the latest rendered snapshot only.
 2. Should the macro return the snapshot with fence markup, or should a raw-text variant be the default?
-    Follow the settings. If fencing is enabled, include the fence markup; otherwise, return raw text.
+   - Follow the settings. If fencing is enabled, include the fence markup; otherwise, return raw text.
 3. Do we want one macro only, or a small family such as `{{zTracker}}`, `{{zTrackerRaw}}`, and `{{zTrackerMinimal}}`?
-    Only one for now. Can revisit.
+   - Only one for now. Can revisit.
 4. Should the macro live in the generation prompt path only, or also be exposed for other SillyTavern template surfaces that support macros?
-    Expose it for other SillyTavern template surfaces that support macros.
+   - Expose it for other SillyTavern template surfaces that support macros.
 5. If the tracker is unavailable, should the macro return an empty string or a visible placeholder comment for debugging?
-    Return an empty string for production use, but a visible placeholder comment for debugging.
+   - Return an empty string for production use, but a visible placeholder comment for debugging.
 
 ## Implementation notes
 
@@ -190,4 +190,3 @@ Instead, it should reuse those settings as the source of truth for formatting wh
 - Unit test that `{{zTracker}}` returns the expected tracker text for a known fixture.
 - Manually verify in SillyTavern that inserting `{{zTracker}}` into a prompt template emits the tracker text exactly where expected.
 - Confirm existing automatic injection still works independently of the macro.
-

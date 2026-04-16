@@ -239,7 +239,7 @@ export function includeZTrackerMessages<T extends Message | ChatMessage>(
           : `${prefix}${text}`;
         const speakerName = useCharacterName ? deriveEmbeddedTrackerSpeakerName(settings) : undefined;
         copyMessages.splice(
-          foundIndex,
+          foundIndex + 1,
           0,
           {
             content,
@@ -249,7 +249,7 @@ export function includeZTrackerMessages<T extends Message | ChatMessage>(
             is_system: embedRole === 'system',
             is_assistant: embedRole === 'assistant',
             is_bot: embedRole === 'assistant',
-            ...(speakerName ? { name: speakerName } : { name: "System"}),
+            ...(speakerName ? { name: speakerName } : {}),
             mes: content,
           } as unknown as T,
         );

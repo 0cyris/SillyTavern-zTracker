@@ -4171,7 +4171,7 @@ function includeZTrackerMessages(messages, settings) {
         var prefix = !useCharacterName && header ? "".concat(header, "\n") : '';
         var content = wrapInCodeFence ? "".concat(prefix, "```").concat(lang, "\n").concat(text, "\n```") : "".concat(prefix).concat(text);
         var speakerName = useCharacterName ? deriveEmbeddedTrackerSpeakerName(settings) : undefined;
-        copyMessages.splice(foundIndex + 1, 0, _objectSpread(_objectSpread({
+        copyMessages.splice(foundIndex - 1, 0, _objectSpread(_objectSpread({
           content: content,
           role: "system",
           // These flags are used by SillyTavern Message objects; harmless for ChatMessage.

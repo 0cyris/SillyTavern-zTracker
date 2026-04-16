@@ -239,7 +239,7 @@ export function includeZTrackerMessages<T extends Message | ChatMessage>(
           : `${prefix}${text}`;
         const speakerName = useCharacterName ? deriveEmbeddedTrackerSpeakerName(settings) : undefined;
         copyMessages.splice(
-          foundIndex + 1,
+          foundIndex - 1,
           0,
           {
             content,

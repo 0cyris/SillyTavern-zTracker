@@ -57,8 +57,6 @@ function renderReactSettings() {
 }
 
 async function main() {
-  console.log('[zTracker] Main function reached.');
-
   if (migrateLegacyPromptTemplates(settingsManager.getSettings())) {
     settingsManager.saveSettings();
   }

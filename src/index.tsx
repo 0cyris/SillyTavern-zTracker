@@ -58,14 +58,33 @@ function renderReactSettings() {
 
 export async function onActivate() {
   await settingsManager.initializeSettings();
+
+  const context = SillyTavern.getContext() as any;
+  console.log('[zTracker] onActivate context keys:', Object.keys(context));
+
+  // 1. Try modern way
+  if (context.macros?.register) {
+    context.macros.register('zHello', {
+      description: 'Test macro',
+      handler: () => 'Hello from zTracker!',
+    });
+    console.log('[zTracker] Registered {{zHello}} via modern API');
+  } 
+  // 2. Try legacy way
+  else if (typeof (context as any).registerMacro === 'function') {
+    (context as any).registerMacro('zHello', () => 'Hello from zTracker (legacy)!');
+    console.log('[zTracker] Registered {{zHello}} via legacy API');
+  } 
+  else {
+    console.error('[zTracker] Could not find any macro registration API in context.');
+  }
+
   const didRegisterMacro = registerZTrackerMacro(
     () => SillyTavern.getContext(),
     () => settingsManager.getSettings(),
   );
   if (didRegisterMacro) {
     console.log('[zTracker] Macro registered during activation.');
-  } else {
-    console.warn('[zTracker] Macro registration failed during activation.');
   }
 }
 

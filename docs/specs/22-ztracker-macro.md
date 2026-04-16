@@ -1,6 +1,6 @@
 # Spec: zTracker prompt macro for manual tracker injection
 
-Status: In Progress
+Status: Approved
 Last updated: 2026-04-16
 
 ## Summary
@@ -148,8 +148,8 @@ Instead, it should reuse those settings as the source of truth for formatting wh
 
 ## Open questions
 
-1. Should `{{zTracker}}` emit the latest rendered snapshot only, or should it synthesize from the raw tracker object every time?
-   - Use the latest rendered snapshot only.
+1. Should the macro's discovery and formatting logic remain consistent with the existing automatic injection system (`includeZTrackerMessages`)?
+   - **Yes.** The macro uses the same backwards-search strategy to find the latest valid tracker snapshot and the same `formatEmbeddedTrackerSnapshot` helper. This ensures that presets, headers, and regex transforms are applied identically whether the tracker is injected automatically or via the `{{zTracker}}` macro.
 2. Should the macro return the snapshot with fence markup, or should a raw-text variant be the default?
    - Follow the settings. If fencing is enabled, include the fence markup; otherwise, return raw text.
 3. Do we want one macro only, or a small family such as `{{zTracker}}`, `{{zTrackerRaw}}`, and `{{zTrackerMinimal}}`?

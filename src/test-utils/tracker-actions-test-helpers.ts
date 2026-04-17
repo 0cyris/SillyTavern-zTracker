@@ -4,6 +4,7 @@ import { jest } from '@jest/globals';
 export const buildPromptMock = jest.fn<() => Promise<{ result: Array<{ role: string; content: string }> }>>();
 export const applyTrackerUpdateAndRenderMock = jest.fn();
 export const renderTrackerWithDepsMock = jest.fn();
+export const sanitizeMessagesForGenerationMock = jest.fn((messages: Array<unknown>) => [...messages]);
 export const stEchoMock = jest.fn();
 
 jest.unstable_mockModule('sillytavern-utils-lib', () => ({
@@ -51,8 +52,23 @@ jest.unstable_mockModule('../tracker.js', () => ({
   CHAT_MESSAGE_SCHEMA_HTML_KEY: 'schemaHtml',
   CHAT_MESSAGE_SCHEMA_VALUE_KEY: 'schemaValue',
   CHAT_MESSAGE_PARTS_ORDER_KEY: 'partsOrder',
+  extractLeadingSystemPrompt: jest.fn((messages: Array<{ role: string; content: string }>) => {
+    const firstNonSystemIndex = messages.findIndex((message) => message.role !== 'system');
+    if (firstNonSystemIndex === 0) {
+      return { remainingMessages: [...messages] };
+    }
+
+    const systemMessages = (firstNonSystemIndex === -1 ? messages : messages.slice(0, firstNonSystemIndex))
+      .map((message) => message.content.trim())
+      .filter((content) => content.length > 0);
+
+    return {
+      ...(systemMessages.length > 0 ? { systemPrompt: systemMessages.join('\n\n') } : {}),
+      remainingMessages: firstNonSystemIndex === -1 ? [] : messages.slice(firstNonSystemIndex),
+    };
+  }),
   includeZTrackerMessages: jest.fn((messages: Array<unknown>) => [...messages]),
-  sanitizeMessagesForGeneration: jest.fn((messages: Array<unknown>) => [...messages]),
+  sanitizeMessagesForGeneration: sanitizeMessagesForGenerationMock,
 }));
 
 jest.unstable_mockModule('../tracker-parts.js', () => ({
@@ -153,6 +169,10 @@ export function makeContext(options: {
   includeSavedPromptPreset?: boolean;
   powerUserSettings?: Record<string, unknown>;
   getPresetManager?: (apiId?: string) => unknown;
+  textCompletionProcessRequest?: jest.Mock;
+  textCompletionConstructPrompt?: jest.Mock;
+  textCompletionCreateRequestData?: jest.Mock;
+  textCompletionSendRequest?: jest.Mock;
 } = {}) {
   const savedPromptPreset = {
     getCompletionPresetByName: (name?: string) =>
@@ -162,10 +182,19 @@ export function makeContext(options: {
 
   return {
     chatMetadata: {},
+    name1: 'Tobias',
+    name2: 'Bar',
     powerUserSettings: {
       prefer_character_prompt: true,
       sysprompt: { name: 'Neutral - Chat' },
       ...(options.powerUserSettings ?? {}),
+    },
+    TextCompletionService: {
+      constructPrompt: options.textCompletionConstructPrompt,
+      createRequestData: options.textCompletionCreateRequestData,
+      processRequest:
+        options.textCompletionProcessRequest ?? jest.fn(async () => ({ content: { time: '10:00:00' } })),
+      sendRequest: options.textCompletionSendRequest,
     },
     getPresetManager:
       options.getPresetManager ??
@@ -207,6 +236,8 @@ export function resetTrackerActionTestState(): void {
   buildPromptMock.mockReset();
   applyTrackerUpdateAndRenderMock.mockReset();
   renderTrackerWithDepsMock.mockReset();
+  sanitizeMessagesForGenerationMock.mockReset();
+  sanitizeMessagesForGenerationMock.mockImplementation((messages: Array<unknown>) => [...messages]);
   stEchoMock.mockReset();
   document.body.innerHTML = '<div id="extensionsMenu"></div>';
 }

@@ -64,7 +64,7 @@ These instructions apply to all files in this repository.
 - This extension is loaded by SillyTavern from `manifest.json` and expects built assets:
 	- `dist/index.js`
 	- `dist/style.css`
-- Build the extension before any SillyTavern smoke test.
+- Build the extension before any SillyTavern smoke test and commit the changes. The extension must be updated in SillyTavern after that!
 - Commit the changed build artifacts before treating a SillyTavern smoke test as valid for branch review or release work.
 - Assume a live SillyTavern instance may still be serving stale extension assets until the current repo build artifacts are present and committed.
 
@@ -91,6 +91,7 @@ These instructions apply to all files in this repository.
 - Prefer `SillyTavern.getContext()` APIs over importing SillyTavern internals.
 - Be careful with prompt interception (`generate_interceptor`): clone inputs if mutations must be ephemeral.
 - Preserve speaker attribution during tracker generation sanitization. SillyTavern prompt assembly may keep instruct/text-completion speaker names on `message.source.name` instead of flattening them into `message.content`, and dropping that field can reduce the final prompt to anonymous `[INST]...[/INST]` turns.
+- Tracker-generation and injection requests MUST use the configs currently active in SillyTavern (e.g. the active instruct template), as the saved settings in the selected connection profile may differ from the active settings. 
 
 ## GitHub Copilot skill
 - For SillyTavern extension development work, load `.github/skills/sillytavern-extension-development/SKILL.md`.

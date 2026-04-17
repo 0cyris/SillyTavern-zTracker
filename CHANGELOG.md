@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-04-17
+
+### Fixed
+
+- Text-completion tracker generation now follows SillyTavern's live instruct and story-string wrapper behavior end-to-end, preserves speaker attribution, keeps tracker instructions at the end of the request, and applies the same prompt handling to field-level regeneration so malformed labels, duplicated prefixes, and wrapper drift no longer break tracker prompts.
+- Text-completion tracker requests now use the live `TextCompletionService` context together with request-local active prompt state, preventing stale profile preset leakage and runtime failures such as `Preset undefined not found` and `Cannot read properties of undefined (reading 'createRequestData')`.
+- Outgoing auto mode now cleanly pauses the host reply while zTracker generates, avoids aborting its own tracker requests or producing duplicate replies, keeps the pending tracker badge visible across rerenders, and exposes a tracker-specific stop control while the hold is active.
+
+## [1.7.1] - 2026-04-16
+
+### Fixed
+
+- Tracker generation now resolves prompt selectors from the configs currently active in SillyTavern instead of the saved selector fields on the chosen connection profile, and text-completion transport now passes the active instruct preset as request-local state so the final request matches the live host prompt configuration without mutating the shared profile.
+- Auto mode now correctly triggers tracker generation for "Process inputs" again by aligning the settings value with the runtime enum and migrating legacy `input` values to the current SillyTavern setting.
+- Outgoing auto mode now aborts the host's first auto-reply pass, waits for tracker generation to finish and save when possible, and then resumes normal chat generation so the next reply uses the freshly updated tracker or still proceeds when tracker generation fails.
+- Text-completion tracker-generation requests now pass the active instruct preset as request-local transport state instead of temporarily mutating the selected connection profile, avoiding cross-request races when multiple generations overlap.
+- Outgoing auto mode now blocks only the first host auto-reply start after a user message while tracker generation is pending, instead of continuing to stop every later generation-start event until the tracker run finishes.
+- Outgoing auto mode now marks the pending user message while its reply is on hold, showing a message-local "Generating tracker before reply" status until the tracker pass completes or fails.
+- Legacy `autoMode: "input"` settings are now migrated to the current SillyTavern enum value during startup, so outgoing auto mode no longer needs a runtime compatibility branch.
+- Outgoing auto mode now clears its pending hold state on chat changes, preventing a tracker run from the previous chat from resuming generation in the newly opened chat.
+- `manifest.json` now declares `minimum_client_version: 1.17.0` because the request-local text-completion transport is only verified against the current SillyTavern 1.17 host surface.
+- Schema preset changes in the settings UI now persist reliably across create, rename, delete, and reselection flows, and the embed snapshot transform preset manager now uses the same stable preset-selection logic.
+- Invalid schema JSON drafts are no longer overwritten silently by schema preset changes or related settings rerenders; zTracker now keeps the local draft on the current preset and warns before preset actions that would discard it.
+
 ## [1.7.0] - 2026-04-14
 
 ### Added

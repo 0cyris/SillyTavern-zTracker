@@ -1,9 +1,8 @@
-import { FC, useState, useMemo, useCallback } from 'react';
+import { FC, useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { STConnectionProfileSelect, PresetItem } from 'sillytavern-utils-lib/components/react';
 import { ExtensionSettingsManager } from 'sillytavern-utils-lib';
 import {
   ExtensionSettings,
-  Schema,
   DEFAULT_SCHEMA_VALUE,
   DEFAULT_SCHEMA_HTML,
   defaultSettings,
@@ -17,6 +16,12 @@ import {
   shouldWarnAboutSharedSystemPromptSelection,
 } from '../system-prompt.js';
 import { DiagnosticsSection } from './settings/DiagnosticsSection.js';
+import { reconcilePresetItems, resolvePresetSelection } from './settings/preset-state.js';
+import {
+  formatSchemaText,
+  hasUnsavedInvalidSchemaDraft,
+  shouldSyncSchemaTextFromSettings,
+} from './settings/schema-editor-state.js';
 import { SettingsSectionDrawer } from './settings/SettingsSectionDrawer.js';
 import { TrackerGenerationSection } from './settings/TrackerGenerationSection.js';
 import { TrackerInjectionSection } from './settings/TrackerInjectionSection.js';
@@ -27,15 +32,14 @@ export const settingsManager = new ExtensionSettingsManager<ExtensionSettings>(E
 export const ZTrackerSettings: FC = () => {
   const forceUpdate = useForceUpdate();
   const settings = settingsManager.getSettings();
+  const previousSchemaPresetRef = useRef(settings.schemaPreset);
 
   const [diagnosticsText, setDiagnosticsText] = useState<string>('');
   const [systemPromptRefreshRevision, setSystemPromptRefreshRevision] = useState(0);
   const [isGenerationOpen, setGenerationOpen] = useState(true);
   const [isInjectionOpen, setInjectionOpen] = useState(true);
 
-  const [schemaText, setSchemaText] = useState(
-    JSON.stringify(settings.schemaPresets[settings.schemaPreset]?.value, null, 2) ?? '',
-  );
+  const [schemaText, setSchemaText] = useState(formatSchemaText(settings.schemaPresets[settings.schemaPreset]));
 
   const updateAndRefresh = useCallback(
     (updater: (currentSettings: ExtensionSettings) => void) => {
@@ -74,31 +78,53 @@ export const ZTrackerSettings: FC = () => {
     setSystemPromptRefreshRevision((revision) => revision + 1);
   }, []);
 
+  const activeSchemaText = formatSchemaText(settings.schemaPresets[settings.schemaPreset]);
+  const schemaTextHasError = hasUnsavedInvalidSchemaDraft(schemaText);
+
+  useEffect(() => {
+    const activePresetChanged = previousSchemaPresetRef.current !== settings.schemaPreset;
+    previousSchemaPresetRef.current = settings.schemaPreset;
+
+    if (!shouldSyncSchemaTextFromSettings({ currentText: schemaText, activePresetChanged })) {
+      return;
+    }
+
+    if (schemaText !== activeSchemaText) {
+      setSchemaText(activeSchemaText);
+    }
+  }, [activeSchemaText, schemaText, settings.schemaPreset]);
 
   // Handler for when a new schema preset is selected
   const handleSchemaPresetChange = (newValue?: string) => {
-    const newPresetKey = newValue ?? 'default';
-    const newPreset = settings.schemaPresets[newPresetKey];
-    if (newPreset) {
-      updateAndRefresh((settings) => {
-        settings.schemaPreset = newPresetKey;
-      });
-      setSchemaText(JSON.stringify(newPreset.value, null, 2));
+    let nextSchemaText: string | undefined;
+
+    updateAndRefresh((currentSettings) => {
+      const selection = resolvePresetSelection(currentSettings.schemaPresets, newValue);
+      if (!selection) {
+        return;
+      }
+
+      currentSettings.schemaPreset = selection.key;
+      nextSchemaText = formatSchemaText(selection.preset);
+    });
+
+    if (nextSchemaText !== undefined) {
+      setSchemaText(nextSchemaText);
     }
   };
 
   // Handler for when the list of presets is modified (created, renamed, deleted)
   const handleSchemaPresetsListChange = (newItems: PresetItem[]) => {
-    updateAndRefresh((s) => {
-      const newPresets: Record<string, Schema> = {};
-      newItems.forEach((item) => {
-        newPresets[item.value] =
-          s.schemaPresets[item.value] ?? structuredClone(s.schemaPresets[s.schemaPreset] ?? s.schemaPresets['default']);
-        // Ensure name is updated on rename
-        newPresets[item.value].name = item.label;
-      });
-      s.schemaPresets = newPresets;
+    let nextSchemaText = '';
+
+    updateAndRefresh((currentSettings) => {
+      const nextState = reconcilePresetItems(currentSettings.schemaPresets, currentSettings.schemaPreset, newItems);
+      currentSettings.schemaPreset = nextState.activeKey;
+      currentSettings.schemaPresets = nextState.presets;
+      nextSchemaText = formatSchemaText(nextState.presets[nextState.activeKey]);
     });
+
+    setSchemaText(nextSchemaText);
   };
 
 
@@ -117,8 +143,8 @@ export const ZTrackerSettings: FC = () => {
           };
         }
       });
-    } catch (e) {
-      // Invalid JSON, do nothing until it's valid. A visual error could be added.
+    } catch {
+      // Invalid JSON stays local until it parses so the user can keep editing.
     }
   };
 
@@ -144,21 +170,22 @@ export const ZTrackerSettings: FC = () => {
     );
     if (!confirm) return;
 
-    const currentPresetKey = settings.schemaPreset;
-    updateAndRefresh((s) => {
-      const preset = s.schemaPresets[currentPresetKey];
+    let nextSchemaText = '';
+    updateAndRefresh((currentSettings) => {
+      const preset = currentSettings.schemaPresets[currentSettings.schemaPreset];
       if (preset) {
-        s.schemaPresets = {
-          ...s.schemaPresets,
-          [currentPresetKey]: {
+        currentSettings.schemaPresets = {
+          ...currentSettings.schemaPresets,
+          [currentSettings.schemaPreset]: {
             ...preset,
             value: DEFAULT_SCHEMA_VALUE,
             html: DEFAULT_SCHEMA_HTML,
           },
         };
+        nextSchemaText = formatSchemaText(currentSettings.schemaPresets[currentSettings.schemaPreset]);
       }
     });
-    setSchemaText(JSON.stringify(DEFAULT_SCHEMA_VALUE, null, 2));
+    setSchemaText(nextSchemaText);
   };
 
   return (
@@ -194,6 +221,7 @@ export const ZTrackerSettings: FC = () => {
                 handleSchemaPresetChange={handleSchemaPresetChange}
                 handleSchemaPresetsListChange={handleSchemaPresetsListChange}
                 schemaText={schemaText}
+                schemaTextHasError={schemaTextHasError}
                 handleSchemaValueChange={handleSchemaValueChange}
                 handleSchemaHtmlChange={handleSchemaHtmlChange}
                 restoreSchemaToDefault={restoreSchemaToDefault}

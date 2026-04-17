@@ -1,5 +1,10 @@
 import type { ExtensionSettings } from '../config.js';
-import { includeZTrackerMessages, sanitizeMessagesForGeneration, CHAT_MESSAGE_SCHEMA_VALUE_KEY } from '../tracker.js';
+import {
+  extractLeadingSystemPrompt,
+  includeZTrackerMessages,
+  sanitizeMessagesForGeneration,
+  CHAT_MESSAGE_SCHEMA_VALUE_KEY,
+} from '../tracker.js';
 import { EXTENSION_KEY } from '../extension-metadata.js';
 
 describe('includeZTrackerMessages', () => {
@@ -263,6 +268,21 @@ describe('includeZTrackerMessages', () => {
     ]);
   });
 
+  it('extracts consecutive leading system messages into one story-string candidate', () => {
+    const result = extractLeadingSystemPrompt([
+      { role: 'system', content: 'Primary system prompt' },
+      { role: 'system', content: 'World info block' },
+      { role: 'user', content: 'Prior chat message' },
+    ]);
+
+    expect(result).toEqual({
+      systemPrompt: 'Primary system prompt\n\nWorld info block',
+      remainingMessages: [
+        { role: 'user', content: 'Prior chat message' },
+      ],
+    });
+  });
+
   it('preserves source-based speaker names on normal chat messages during interceptor embedding', () => {
     const messages = [
       {
@@ -436,6 +456,83 @@ describe('includeZTrackerMessages', () => {
       {
         role: 'user',
         content: 'Tobias: "A glass of water please" I say and sit down at the bar.',
+      },
+    ]);
+  });
+
+  it('inserts the active user-alignment message before assistant-opening text-completion prompts', () => {
+    const messages = [
+      {
+        role: 'system',
+        content: 'You are a structured data extraction assistant.',
+      },
+      {
+        role: 'assistant',
+        content: 'As you enter the bar you realize you are the only customer.',
+        source: {
+          name: 'Bar',
+        },
+      },
+      {
+        role: 'user',
+        content: 'Just water, please.',
+        source: {
+          name: 'Tobias',
+        },
+      },
+    ] as any;
+
+    expect(sanitizeMessagesForGeneration(messages, {
+      inlineNamesIntoContent: true,
+      userAlignmentMessage: 'Let\'s get started. Please respond based on the information and instructions provided above.',
+      userName: 'Tobias',
+    })).toEqual([
+      {
+        role: 'system',
+        content: 'You are a structured data extraction assistant.',
+      },
+      {
+        role: 'user',
+        content: 'Tobias: Let\'s get started. Please respond based on the information and instructions provided above.',
+      },
+      {
+        role: 'assistant',
+        content: 'Bar: As you enter the bar you realize you are the only customer.',
+      },
+      {
+        role: 'user',
+        content: 'Tobias: Just water, please.',
+      },
+    ]);
+  });
+
+  it('does not insert the active user-alignment message when the prompt already starts with a user turn', () => {
+    const messages = [
+      {
+        role: 'system',
+        content: 'You are a structured data extraction assistant.',
+      },
+      {
+        role: 'user',
+        content: 'Just water, please.',
+        source: {
+          name: 'Tobias',
+        },
+      },
+    ] as any;
+
+    expect(sanitizeMessagesForGeneration(messages, {
+      inlineNamesIntoContent: true,
+      userAlignmentMessage: 'Let\'s get started. Please respond based on the information and instructions provided above.',
+      userName: 'Tobias',
+    })).toEqual([
+      {
+        role: 'system',
+        content: 'You are a structured data extraction assistant.',
+      },
+      {
+        role: 'user',
+        content: 'Tobias: Just water, please.',
       },
     ]);
   });

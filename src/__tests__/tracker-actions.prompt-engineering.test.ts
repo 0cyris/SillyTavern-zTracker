@@ -178,9 +178,10 @@ describe('createTrackerActions prompt engineering', () => {
 
     const sentMessages = generateRequest.mock.calls[0][0].prompt;
     expect(sentMessages.at(-1)).toEqual({
-      role: 'user',
+      role: 'system',
       content: 'TOON TEMPLATE\ntime\tstring',
     });
+    expect(sentMessages.at(-2)).toEqual({ role: 'user', content: 'Prior chat message' });
     expect(applyTrackerUpdateAndRenderMock).toHaveBeenCalled();
   });
 
@@ -220,7 +221,7 @@ describe('createTrackerActions prompt engineering', () => {
 
     const sentMessages = generateRequest.mock.calls[0][0].prompt;
     expect(sentMessages.at(-1)).toEqual({
-      role: 'user',
+      role: 'system',
       content: 'XML TEMPLATE\n<type>object</type>\n<time>string</time>',
     });
     expect(sentMessages.at(-1).content).not.toContain('{\n  "type"');

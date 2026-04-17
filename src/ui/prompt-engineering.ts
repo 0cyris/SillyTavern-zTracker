@@ -122,7 +122,7 @@ export function createPromptEngineeringHelpers() {
       example_response: exampleResponse,
     });
 
-    requestMessages.push({ content: `${finalPrompt}${suffix}`, role: 'user' });
+    requestMessages.push({ role: 'system', content: `${finalPrompt}${suffix}` });
 
     const response = await makeRequest(requestMessages);
     if (!response?.content) {

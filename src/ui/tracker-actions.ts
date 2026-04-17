@@ -20,6 +20,7 @@ import {
   CHAT_MESSAGE_SCHEMA_HTML_KEY,
   CHAT_MESSAGE_SCHEMA_VALUE_KEY,
   CHAT_MESSAGE_PARTS_ORDER_KEY,
+  extractLeadingSystemPrompt,
   includeZTrackerMessages,
   sanitizeMessagesForGeneration,
 } from '../tracker.js';
@@ -50,6 +51,195 @@ import {
 } from './tracker-action-helpers.js';
 import { captureTrackerRequestDebugSnapshot, debugLog, isDebugLoggingEnabled } from './debug.js';
 
+interface TextCompletionStoryStringFormatter {
+  renderStoryString: (
+    params: Record<string, unknown>,
+    options?: {
+      customStoryString?: string | null;
+      customInstructSettings?: Record<string, unknown> | null;
+      customContextSettings?: Record<string, unknown> | null;
+    },
+  ) => string;
+  formatInstructModeStoryString: (
+    storyString: string,
+    options?: {
+      customContext?: Record<string, unknown> | null;
+      customInstruct?: Record<string, unknown> | null;
+    },
+  ) => string;
+  getInstructStoppingSequences: (
+    options?: {
+      customInstruct?: Record<string, unknown> | null;
+      useStopStrings?: boolean;
+    },
+  ) => string[];
+}
+
+let textCompletionStoryStringFormatterPromise: Promise<TextCompletionStoryStringFormatter | undefined> | undefined;
+
+// Mirrors the host's story-string helpers at runtime without bundling SillyTavern's internal modules.
+async function loadTextCompletionStoryStringFormatter(): Promise<TextCompletionStoryStringFormatter | undefined> {
+  if (textCompletionStoryStringFormatterPromise) {
+    return textCompletionStoryStringFormatterPromise;
+  }
+
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  textCompletionStoryStringFormatterPromise = Promise.all([
+    // @ts-expect-error SillyTavern serves this browser-only module at runtime.
+    import(/* webpackIgnore: true */ '/scripts/power-user.js'),
+    // @ts-expect-error SillyTavern serves this browser-only module at runtime.
+    import(/* webpackIgnore: true */ '/scripts/instruct-mode.js'),
+  ])
+    .then(([powerUserModule, instructModeModule]) => {
+      if (
+        typeof powerUserModule.renderStoryString !== 'function' ||
+        typeof instructModeModule.formatInstructModeStoryString !== 'function' ||
+        typeof instructModeModule.getInstructStoppingSequences !== 'function'
+      ) {
+        return undefined;
+      }
+
+      return {
+        renderStoryString: powerUserModule.renderStoryString,
+        formatInstructModeStoryString: instructModeModule.formatInstructModeStoryString,
+        getInstructStoppingSequences: instructModeModule.getInstructStoppingSequences,
+      } satisfies TextCompletionStoryStringFormatter;
+    })
+    .catch((error) => {
+      console.warn('zTracker: failed to load SillyTavern story-string helpers; falling back to direct prompt assembly.', error);
+      return undefined;
+    });
+
+  return textCompletionStoryStringFormatterPromise;
+}
+
+function trimTextCompletionResponse(
+  response: ExtractedData | undefined,
+  stoppingStrings: string[] | undefined,
+  instructSettings?: Record<string, unknown>,
+): ExtractedData | undefined {
+  if (!response || typeof response.content !== 'string') {
+    return response;
+  }
+
+  let message = response.content.replace(/[^\S\r\n]+$/gm, '');
+
+  for (const stoppingString of stoppingStrings ?? []) {
+    if (!stoppingString.length) {
+      continue;
+    }
+
+    for (let length = stoppingString.length; length > 0; length -= 1) {
+      if (message.slice(-length) === stoppingString.slice(0, length)) {
+        message = message.slice(0, -length);
+        break;
+      }
+    }
+  }
+
+  for (const sequence of [instructSettings?.stop_sequence, instructSettings?.input_sequence]) {
+    if (typeof sequence !== 'string' || !sequence.trim()) {
+      continue;
+    }
+
+    const index = message.indexOf(sequence);
+    if (index !== -1) {
+      message = message.substring(0, index);
+    }
+  }
+
+  for (const sequences of [instructSettings?.output_sequence, instructSettings?.last_output_sequence]) {
+    if (typeof sequences !== 'string' || !sequences.length) {
+      continue;
+    }
+
+    sequences
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .forEach((line) => {
+        message = message.replaceAll(line, '');
+      });
+  }
+
+  return {
+    ...response,
+    content: message,
+  };
+}
+
+async function buildStoryStringWrappedTextCompletionPrompt(options: {
+  requestMessages: Message[];
+  bodyRequestMessages?: Message[];
+  context: {
+    powerUserSettings?: {
+      instruct?: Record<string, unknown>;
+      context?: Record<string, unknown>;
+    };
+  };
+  textCompletionService: {
+    constructPrompt?: (
+      prompt: Message[],
+      instructPreset?: string | Record<string, unknown>,
+      instructSettings?: Record<string, unknown>,
+    ) => string;
+  };
+  formatterLoader?: () => Promise<TextCompletionStoryStringFormatter | undefined>;
+}): Promise<{ prompt: string; stoppingStrings: string[]; instructSettings: Record<string, unknown> } | undefined> {
+  const activeInstructSettings = options.context.powerUserSettings?.instruct;
+  const activeContextSettings = options.context.powerUserSettings?.context;
+  if (!activeInstructSettings || !activeContextSettings || typeof options.textCompletionService.constructPrompt !== 'function') {
+    return undefined;
+  }
+
+  const formatter = await (options.formatterLoader ?? loadTextCompletionStoryStringFormatter)();
+  if (!formatter) {
+    return undefined;
+  }
+
+  const { systemPrompt, remainingMessages } = extractLeadingSystemPrompt(options.requestMessages);
+  if (!systemPrompt) {
+    return undefined;
+  }
+
+  const promptParts: string[] = [];
+  const storyString = formatter.renderStoryString(
+    { system: systemPrompt },
+    {
+      customInstructSettings: activeInstructSettings,
+      customContextSettings: activeContextSettings,
+    },
+  );
+  const wrappedStoryString = formatter.formatInstructModeStoryString(storyString, {
+    customContext: activeContextSettings,
+    customInstruct: activeInstructSettings,
+  });
+  if (wrappedStoryString.length > 0) {
+    promptParts.push(wrappedStoryString);
+  }
+
+  const bodyMessages = options.bodyRequestMessages
+    ? extractLeadingSystemPrompt(options.bodyRequestMessages).remainingMessages
+    : remainingMessages;
+  if (bodyMessages.length > 0) {
+    const promptBody = options.textCompletionService.constructPrompt(bodyMessages, activeInstructSettings, {});
+    if (promptBody.length > 0) {
+      promptParts.push(promptBody);
+    }
+  }
+
+  return {
+    prompt: promptParts.join('\n'),
+    stoppingStrings: formatter.getInstructStoppingSequences({
+      customInstruct: activeInstructSettings,
+      useStopStrings: false,
+    }),
+    instructSettings: activeInstructSettings,
+  };
+}
+
 export function createTrackerActions(options: {
   globalContext: any;
   settingsManager: ExtensionSettingsManager<ExtensionSettings>;
@@ -57,29 +247,210 @@ export function createTrackerActions(options: {
   pendingRequests: Map<number, string>;
   renderTrackerWithDeps: (messageId: number) => void;
   importMetaUrl: string;
+  beforeRequestStartHook?: () => void;
+  textCompletionStoryStringFormatterLoader?: () => Promise<TextCompletionStoryStringFormatter | undefined>;
 }) {
   const { globalContext, settingsManager, generator, pendingRequests, renderTrackerWithDeps, importMetaUrl } = options;
   const pendingSequences = new Map<number, { cancelled: boolean }>();
+  const localPendingRequestAborters = new Map<string, AbortController>();
+  let nextLocalRequestId = 0;
+  let beforeRequestStartHook = options.beforeRequestStartHook;
+  const textCompletionStoryStringFormatterLoader = options.textCompletionStoryStringFormatterLoader;
   const { logPromptEngineeredRenderRollback, requestPromptEngineeredResponse } = createPromptEngineeringHelpers();
 
+  function createLocalRequestId(messageId: number): string {
+    nextLocalRequestId += 1;
+    return `ztracker-local-${messageId}-${nextLocalRequestId}`;
+  }
+
+  // Keep tracker instructions as trailing system messages so they stay non-dialogue and remain at the end of the prompt.
+  function insertTrackerInstructionMessage(messages: Message[], content: string): void {
+    messages.push({ role: 'system', content } as Message);
+  }
+
+  /**
+   * Sends text-completion tracker requests with a request-local instruct preset.
+   * This currently depends on SillyTavern's internal TextCompletionService because
+   * the public request service does not expose an instruct-name override yet.
+   * Keep this path isolated so it can move back to the stable request service once
+   * upstream surfaces that override.
+   */
+  async function sendTextCompletionTrackerRequest(options: {
+    messageId: number;
+    profile: any;
+    selectedApiType: string | undefined;
+    requestMessages: Message[];
+    wrappedRequestMessages?: Message[];
+    instructName?: string;
+    overridePayload?: Record<string, any>;
+    maxTokens: number;
+  }): Promise<ExtractedData | undefined> {
+    const context = SillyTavern.getContext() as {
+      TextCompletionService?: {
+        constructPrompt?: (
+          prompt: Message[],
+          instructPreset?: string | Record<string, unknown>,
+          instructSettings?: Record<string, unknown>,
+        ) => string;
+        createRequestData?: (requestData: Record<string, any>) => Record<string, any>;
+        processRequest?: (
+          requestData: Record<string, any>,
+          requestOptions: { presetName?: string; instructName?: string; instructSettings?: Record<string, any> },
+          extractData?: boolean,
+          signal?: AbortSignal,
+        ) => Promise<ExtractedData | undefined>;
+        sendRequest?: (
+          requestData: Record<string, any>,
+          extractData?: boolean,
+          signal?: AbortSignal,
+        ) => Promise<ExtractedData | undefined>;
+      };
+      powerUserSettings?: {
+        instruct?: Record<string, unknown>;
+        context?: Record<string, unknown>;
+      };
+    };
+    const textCompletionService = context?.TextCompletionService;
+    if (typeof textCompletionService?.processRequest !== 'function') {
+      throw new Error('SillyTavern text-completion request API is unavailable.');
+    }
+
+    const abortController = new AbortController();
+    const requestId = createLocalRequestId(options.messageId);
+    pendingRequests.set(options.messageId, requestId);
+    localPendingRequestAborters.set(requestId, abortController);
+
+    try {
+      const wrappedPrompt = await buildStoryStringWrappedTextCompletionPrompt({
+        requestMessages: options.requestMessages,
+        bodyRequestMessages: options.wrappedRequestMessages,
+        context,
+        textCompletionService,
+        formatterLoader: textCompletionStoryStringFormatterLoader,
+      });
+      if (
+        wrappedPrompt &&
+        typeof textCompletionService.createRequestData === 'function' &&
+        typeof textCompletionService.sendRequest === 'function'
+      ) {
+        beforeRequestStartHook?.();
+
+        const requestData = textCompletionService.createRequestData.call(textCompletionService, {
+          stream: false,
+          prompt: wrappedPrompt.prompt,
+          max_tokens: options.maxTokens,
+          model: options.profile?.model,
+          api_type: options.selectedApiType ?? options.profile?.api,
+          api_server: options.profile?.['api-url'],
+          ...(wrappedPrompt.stoppingStrings.length > 0
+            ? {
+                stop: wrappedPrompt.stoppingStrings,
+                stopping_strings: wrappedPrompt.stoppingStrings,
+              }
+            : {}),
+          ...(options.overridePayload ?? {}),
+        });
+
+        const response = await textCompletionService.sendRequest.call(
+          textCompletionService,
+          requestData,
+          true,
+          abortController.signal,
+        );
+
+        return trimTextCompletionResponse(
+          response,
+          requestData.stopping_strings,
+          wrappedPrompt.instructSettings,
+        );
+      }
+
+      beforeRequestStartHook?.();
+      return await textCompletionService.processRequest.call(
+        textCompletionService,
+        {
+          stream: false,
+          prompt: options.requestMessages,
+          max_tokens: options.maxTokens,
+          model: options.profile?.model,
+          api_type: options.selectedApiType ?? options.profile?.api,
+          api_server: options.profile?.['api-url'],
+          ...(options.overridePayload ?? {}),
+        },
+        {
+          instructName: options.instructName,
+          instructSettings: {},
+        },
+        true,
+        abortController.signal,
+      );
+    } finally {
+      localPendingRequestAborters.delete(requestId);
+      pendingRequests.delete(options.messageId);
+    }
+  }
+
   function cancelIfPending(messageId: number): boolean {
-    if (!pendingRequests.has(messageId)) return false;
-    const requestId = pendingRequests.get(messageId)!;
-    generator.abortRequest(requestId);
     const token = pendingSequences.get(messageId);
-    if (token) token.cancelled = true;
+    let cancelled = false;
+
+    if (token) {
+      token.cancelled = true;
+      cancelled = true;
+    }
+
+    if (pendingRequests.has(messageId)) {
+      const requestId = pendingRequests.get(messageId)!;
+      const localAbortController = localPendingRequestAborters.get(requestId);
+      if (localAbortController) {
+        localAbortController.abort();
+      } else {
+        generator.abortRequest(requestId);
+      }
+      cancelled = true;
+    }
+
+    if (!cancelled) {
+      return false;
+    }
+
     st_echo('info', 'Tracker generation cancelled.');
     return true;
   }
 
-  function makeRequestFactory(messageId: number, settings: ExtensionSettings) {
+  /** Cancels the currently pending tracker run for a message, if one exists. */
+  function cancelTracker(messageId: number): boolean {
+    return cancelIfPending(messageId);
+  }
+
+  function makeRequestFactory(messageId: number, settings: ExtensionSettings, options: { instructName?: string } = {}) {
     return (requestMessages: Message[], overideParams?: any): Promise<ExtractedData | undefined> => {
       return new Promise((resolve, reject) => {
         const abortController = new AbortController();
         const profile = globalContext.extensionSettings?.connectionManager?.profiles?.find((p: any) => p.id === settings.profileId);
-        const selectedApi = profile?.api ? globalContext.CONNECT_API_MAP?.[profile.api]?.selected : undefined;
+        const selectedApiMap = profile?.api ? globalContext.CONNECT_API_MAP?.[profile.api] : undefined;
+        const selectedApi = selectedApiMap?.selected;
+        const context = SillyTavern.getContext() as {
+          name1?: string;
+          powerUserSettings?: {
+            instruct?: {
+              user_alignment_message?: string;
+            };
+          };
+        };
+        const textCompletionPromptBody = selectedApi === 'textgenerationwebui'
+          ? sanitizeMessagesForGeneration(requestMessages, {
+              userAlignmentMessage: context?.powerUserSettings?.instruct?.user_alignment_message,
+              userName: context?.name1,
+            })
+          : undefined;
         const sanitizedPrompt = sanitizeMessagesForGeneration(requestMessages, {
           inlineNamesIntoContent: selectedApi === 'textgenerationwebui',
+          userAlignmentMessage:
+            selectedApi === 'textgenerationwebui'
+              ? context?.powerUserSettings?.instruct?.user_alignment_message
+              : undefined,
+          userName: selectedApi === 'textgenerationwebui' ? context?.name1 : undefined,
         });
         captureTrackerRequestDebugSnapshot(settingsManager, {
           messageId,
@@ -90,29 +461,48 @@ export function createTrackerActions(options: {
           requestMessages: requestMessages as any,
           sanitizedPrompt,
         });
-        generator.generateRequest(
-          {
-            profileId: settings.profileId,
-            prompt: sanitizedPrompt,
-            maxTokens: settings.maxResponseToken,
-            custom: { signal: abortController.signal },
-            overridePayload: {
-              ...overideParams,
+        try {
+          if (selectedApi === 'textgenerationwebui') {
+            void sendTextCompletionTrackerRequest({
+              messageId,
+              profile,
+              selectedApiType: selectedApiMap?.type,
+              requestMessages: sanitizedPrompt,
+              wrappedRequestMessages: textCompletionPromptBody,
+              instructName: options.instructName,
+              overridePayload: overideParams ?? {},
+              maxTokens: settings.maxResponseToken,
+            }).then(resolve, reject);
+            return;
+          }
+
+          beforeRequestStartHook?.();
+          generator.generateRequest(
+            {
+              profileId: settings.profileId,
+              prompt: sanitizedPrompt,
+              maxTokens: settings.maxResponseToken,
+              custom: { signal: abortController.signal },
+              overridePayload: {
+                ...overideParams,
+              },
             },
-          },
-          {
-            abortController,
-            onStart: (requestId: string) => {
-              pendingRequests.set(messageId, requestId);
+            {
+              abortController,
+              onStart: (requestId: string) => {
+                pendingRequests.set(messageId, requestId);
+              },
+              onFinish: (requestId: string, data: unknown, error: unknown) => {
+                pendingRequests.delete(messageId);
+                if (error) return reject(error);
+                if (!data) return reject(new DOMException('Request aborted by user', 'AbortError'));
+                resolve(data as ExtractedData | undefined);
+              },
             },
-            onFinish: (requestId: string, data: unknown, error: unknown) => {
-              pendingRequests.delete(messageId);
-              if (error) return reject(error);
-              if (!data) return reject(new DOMException('Request aborted by user', 'AbortError'));
-              resolve(data as ExtractedData | undefined);
-            },
-          },
-        );
+          );
+        } catch (error) {
+          reject(error);
+        }
       });
     };
   }
@@ -159,7 +549,7 @@ export function createTrackerActions(options: {
     const ignoreWorldInfo = shouldIgnoreWorldInfoDuringTrackerBuild(trackerWorldInfoMode);
     const skipCharacterCardInTrackerGeneration = settings.skipCharacterCardInTrackerGeneration ?? false;
 
-    const syspromptName = resolveTrackerSystemPromptName(settings, profile);
+    const syspromptName = resolveTrackerSystemPromptName(settings, context);
     let savedSystemPromptContent: string | undefined;
     if (settings.trackerSystemPromptMode === 'saved') {
       if (!syspromptName) {
@@ -174,6 +564,13 @@ export function createTrackerActions(options: {
       }
     }
 
+    const promptPresetSelections = getPromptPresetSelections(apiMap.selected, {
+      context,
+      trackerSystemPromptMode: settings.trackerSystemPromptMode,
+      trackerSystemPromptName: syspromptName,
+    });
+    const includePromptNames = apiMap.selected !== 'textgenerationwebui';
+
     let promptResult;
     promptResult = await buildPrompt(apiMap.selected, {
       targetCharacterId: characterId,
@@ -181,12 +578,8 @@ export function createTrackerActions(options: {
         end: messageId,
         start: settings.includeLastXMessages > 0 ? Math.max(0, messageId - settings.includeLastXMessages) : 0,
       },
-      ...getPromptPresetSelections(profile, apiMap.selected, {
-        context,
-        trackerSystemPromptMode: settings.trackerSystemPromptMode,
-        trackerSystemPromptName: syspromptName,
-      }),
-      includeNames: true,
+      ...promptPresetSelections,
+      includeNames: includePromptNames,
       ignoreWorldInfo,
       ...(skipCharacterCardInTrackerGeneration ? { ignoreCharacterFields: true } : {}),
     });
@@ -255,6 +648,7 @@ export function createTrackerActions(options: {
       chatHtmlValue,
       messages,
       existingTracker,
+      transportInstructName: promptPresetSelections.instructName,
     };
   }
 
@@ -335,7 +729,7 @@ export function createTrackerActions(options: {
   }
 
   async function generateTrackerFull(id: number) {
-    if (cancelIfPending(id)) return;
+    if (cancelIfPending(id)) return false;
 
     const { saveChat } = globalContext;
 
@@ -348,20 +742,27 @@ export function createTrackerActions(options: {
     const mainButton = messageBlock?.querySelector('.mes_ztracker_button');
     const regenerateButton = messageBlock?.querySelector('.ztracker-regenerate-button');
     const detailsState = captureDetailsState(id);
+    const token = { cancelled: false };
+
+    pendingSequences.set(id, token);
 
     try {
       mainButton?.classList.add('spinning');
       regenerateButton?.classList.add('spinning');
 
-      const { message, settings, chatJsonValue, chatHtmlValue, messages, existingTracker } = await prepareTrackerGeneration(id);
+      const { message, settings, chatJsonValue, chatHtmlValue, messages, existingTracker, transportInstructName } = await prepareTrackerGeneration(id);
+      if (token.cancelled) {
+        return false;
+      }
+
       const partsOrder = resolveTopLevelPartsOrder(chatJsonValue);
       const partsMeta = buildPartsMeta(chatJsonValue);
-      const makeRequest = makeRequestFactory(id, settings);
+      const makeRequest = makeRequestFactory(id, settings, { instructName: transportInstructName });
 
       let response: ExtractedData['content'];
 
       if (settings.promptEngineeringMode === PromptEngineeringMode.NATIVE) {
-        messages.push({ content: settings.prompt, role: 'user' });
+        insertTrackerInstructionMessage(messages, settings.prompt);
         const result = await makeRequest(messages, {
           json_schema: { name: 'SceneTracker', strict: true, value: chatJsonValue },
         });
@@ -370,6 +771,10 @@ export function createTrackerActions(options: {
       } else {
         // @ts-ignore
         response = await requestPromptEngineeredResponse(makeRequest, messages, settings, chatJsonValue);
+      }
+
+      if (token.cancelled) {
+        return false;
       }
 
       if (!response || Object.keys(response as any).length === 0) throw new Error('Empty response from zTracker.');
@@ -383,6 +788,7 @@ export function createTrackerActions(options: {
         });
         restoreDetailsState(id, detailsState);
         await saveChat();
+        return true;
       } catch {
         logPromptEngineeredRenderRollback(response, new Error('Generated data failed to render with the current template. Not saved.'));
         renderTrackerWithDeps(id);
@@ -393,14 +799,16 @@ export function createTrackerActions(options: {
         console.error('Error generating tracker:', error);
         st_echo('error', `Tracker generation failed: ${(error as Error).message}`);
       }
+      return false;
     } finally {
+      pendingSequences.delete(id);
       mainButton?.classList.remove('spinning');
       regenerateButton?.classList.remove('spinning');
     }
   }
 
   async function generateTrackerSequential(id: number) {
-    if (cancelIfPending(id)) return;
+    if (cancelIfPending(id)) return false;
 
     const { saveChat } = globalContext;
     const messageBlock = document.querySelector(`.mes[mesid="${id}"]`);
@@ -415,14 +823,18 @@ export function createTrackerActions(options: {
       mainButton?.classList.add('spinning');
       regenerateButton?.classList.add('spinning');
 
-      const { message, settings, chatJsonValue, chatHtmlValue, messages, existingTracker } = await prepareTrackerGeneration(id);
+      const { message, settings, chatJsonValue, chatHtmlValue, messages, existingTracker, transportInstructName } = await prepareTrackerGeneration(id);
+      if (token.cancelled) {
+        return false;
+      }
+
       const partsOrder = resolveTopLevelPartsOrder(chatJsonValue);
       const partsMeta = buildPartsMeta(chatJsonValue);
       if (partsOrder.length === 0) {
         throw new Error('Schema has no top-level properties to generate.');
       }
 
-      const makeRequest = makeRequestFactory(id, settings);
+      const makeRequest = makeRequestFactory(id, settings, { instructName: transportInstructName });
       const baseMessages = structuredClone(messages) as Message[];
       let trackerData: any = {};
 
@@ -443,10 +855,10 @@ export function createTrackerActions(options: {
 
         let partResponse: any;
         if (settings.promptEngineeringMode === PromptEngineeringMode.NATIVE) {
-          requestMessages.push({
-            role: 'user',
-            content: `${settings.prompt}\n\nGenerate ONLY the field "${partKey}". Return a single JSON object matching the provided schema.`,
-          } as any);
+          insertTrackerInstructionMessage(
+            requestMessages,
+            `${settings.prompt}\n\nGenerate ONLY the field "${partKey}". Return a single JSON object matching the provided schema.`,
+          );
           const result = await makeRequest(requestMessages, {
             json_schema: { name: 'SceneTrackerPart', strict: true, value: partSchema },
           });
@@ -464,7 +876,7 @@ export function createTrackerActions(options: {
       }
 
       if (token.cancelled) {
-        return;
+        return false;
       }
 
       if (!trackerData || Object.keys(trackerData).length === 0) {
@@ -480,6 +892,7 @@ export function createTrackerActions(options: {
         });
         restoreDetailsState(id, detailsState);
         await saveChat();
+        return true;
       } catch {
         logPromptEngineeredRenderRollback(trackerData, new Error('Generated data failed to render with the current template. Not saved.'));
         renderTrackerWithDeps(id);
@@ -490,6 +903,7 @@ export function createTrackerActions(options: {
         console.error('Error generating tracker (sequential):', error);
         st_echo('error', `Tracker generation failed: ${(error as Error).message}`);
       }
+      return false;
     } finally {
       pendingSequences.delete(id);
       mainButton?.classList.remove('spinning');
@@ -511,7 +925,7 @@ export function createTrackerActions(options: {
     try {
       partButton?.classList.add('spinning');
 
-      const { message, settings, chatJsonValue, chatHtmlValue, messages } = await prepareTrackerGeneration(id);
+      const { message, settings, chatJsonValue, chatHtmlValue, messages, transportInstructName } = await prepareTrackerGeneration(id);
 
       const currentTracker = message?.extra?.[EXTENSION_KEY]?.[CHAT_MESSAGE_SCHEMA_VALUE_KEY];
       if (!currentTracker || typeof currentTracker !== 'object') {
@@ -521,7 +935,7 @@ export function createTrackerActions(options: {
       const partsOrder = resolveTopLevelPartsOrder(chatJsonValue);
       const partsMeta = buildPartsMeta(chatJsonValue);
       const partSchema = buildTopLevelPartSchema(chatJsonValue, partKey);
-      const makeRequest = makeRequestFactory(id, settings);
+      const makeRequest = makeRequestFactory(id, settings, { instructName: transportInstructName });
 
       const redactedTracker = redactTrackerPartValue(currentTracker, partKey);
       appendCurrentTrackerSnapshot(
@@ -532,10 +946,10 @@ export function createTrackerActions(options: {
 
       let partResponse: any;
       if (settings.promptEngineeringMode === PromptEngineeringMode.NATIVE) {
-        messages.push({
-          role: 'user',
-          content: `${settings.prompt}\n\nGenerate ONLY the field "${partKey}". Return a single JSON object matching the provided schema.`,
-        } as any);
+        insertTrackerInstructionMessage(
+          messages,
+          `${settings.prompt}\n\nGenerate ONLY the field "${partKey}". Return a single JSON object matching the provided schema.`,
+        );
         const result = await makeRequest(messages, {
           json_schema: { name: 'SceneTrackerPart', strict: true, value: partSchema },
         });
@@ -590,7 +1004,7 @@ export function createTrackerActions(options: {
     try {
       itemButton?.classList.add('spinning');
 
-      const { message, settings, chatJsonValue, chatHtmlValue, messages } = await prepareTrackerGeneration(id);
+      const { message, settings, chatJsonValue, chatHtmlValue, messages, transportInstructName } = await prepareTrackerGeneration(id);
       const currentTracker = message?.extra?.[EXTENSION_KEY]?.[CHAT_MESSAGE_SCHEMA_VALUE_KEY];
       if (!currentTracker || typeof currentTracker !== 'object') {
         throw new Error('No existing tracker found for this message. Generate a full tracker first.');
@@ -607,7 +1021,7 @@ export function createTrackerActions(options: {
       const partsOrder = resolveTopLevelPartsOrder(chatJsonValue);
       const partsMeta = buildPartsMeta(chatJsonValue);
       const itemSchema = buildArrayItemSchema(chatJsonValue, partKey);
-      const makeRequest = makeRequestFactory(id, settings);
+      const makeRequest = makeRequestFactory(id, settings, { instructName: transportInstructName });
 
       const idKey = getArrayItemIdentityKey(chatJsonValue, partKey);
       const idValue =
@@ -629,10 +1043,10 @@ export function createTrackerActions(options: {
 
       let itemResponse: any;
       if (settings.promptEngineeringMode === PromptEngineeringMode.NATIVE) {
-        messages.push({
-          role: 'user',
-          content: `${settings.prompt}\n\nRegenerate ONLY ${partKey}[${index}] as an object under key "item". Return a single JSON object matching the provided schema. IMPORTANT: Generate a fresh item; the previous values have been intentionally omitted and must not be repeated.`,
-        } as any);
+        insertTrackerInstructionMessage(
+          messages,
+          `${settings.prompt}\n\nRegenerate ONLY ${partKey}[${index}] as an object under key "item". Return a single JSON object matching the provided schema. IMPORTANT: Generate a fresh item; the previous values have been intentionally omitted and must not be repeated.`,
+        );
         const result = await makeRequest(messages, {
           json_schema: { name: 'SceneTrackerItem', strict: true, value: itemSchema },
         });
@@ -688,7 +1102,7 @@ export function createTrackerActions(options: {
     try {
       itemButton?.classList.add('spinning');
 
-      const { message, settings, chatJsonValue, chatHtmlValue, messages } = await prepareTrackerGeneration(id);
+      const { message, settings, chatJsonValue, chatHtmlValue, messages, transportInstructName } = await prepareTrackerGeneration(id);
       const currentTracker = message?.extra?.[EXTENSION_KEY]?.[CHAT_MESSAGE_SCHEMA_VALUE_KEY];
       if (!currentTracker || typeof currentTracker !== 'object') {
         throw new Error('No existing tracker found for this message. Generate a full tracker first.');
@@ -711,7 +1125,7 @@ export function createTrackerActions(options: {
       const partsOrder = resolveTopLevelPartsOrder(chatJsonValue);
       const partsMeta = buildPartsMeta(chatJsonValue);
       const itemSchema = buildArrayItemSchema(chatJsonValue, partKey);
-      const makeRequest = makeRequestFactory(id, settings);
+      const makeRequest = makeRequestFactory(id, settings, { instructName: transportInstructName });
 
       const redactedTracker = redactTrackerArrayItemValue(currentTracker, partKey, index);
       appendCurrentTrackerSnapshot(
@@ -731,10 +1145,10 @@ export function createTrackerActions(options: {
         : '';
 
       if (settings.promptEngineeringMode === PromptEngineeringMode.NATIVE) {
-        messages.push({
-          role: 'user',
-          content: `${settings.prompt}\n\nRegenerate ONLY the ${partKey} item with name "${name}" as an object under key "item". Return a single JSON object matching the provided schema.${preserveLine}\n\nIMPORTANT: Generate a fresh item; the previous values have been intentionally omitted and must not be repeated.`,
-        } as any);
+        insertTrackerInstructionMessage(
+          messages,
+          `${settings.prompt}\n\nRegenerate ONLY the ${partKey} item with name "${name}" as an object under key "item". Return a single JSON object matching the provided schema.${preserveLine}\n\nIMPORTANT: Generate a fresh item; the previous values have been intentionally omitted and must not be repeated.`,
+        );
         const result = await makeRequest(messages, {
           json_schema: { name: 'SceneTrackerItem', strict: true, value: itemSchema },
         });
@@ -800,7 +1214,7 @@ export function createTrackerActions(options: {
     try {
       itemButton?.classList.add('spinning');
 
-      const { message, settings, chatJsonValue, chatHtmlValue, messages } = await prepareTrackerGeneration(id);
+      const { message, settings, chatJsonValue, chatHtmlValue, messages, transportInstructName } = await prepareTrackerGeneration(id);
       const currentTracker = message?.extra?.[EXTENSION_KEY]?.[CHAT_MESSAGE_SCHEMA_VALUE_KEY];
       if (!currentTracker || typeof currentTracker !== 'object') {
         throw new Error('No existing tracker found for this message. Generate a full tracker first.');
@@ -823,7 +1237,7 @@ export function createTrackerActions(options: {
       const partsOrder = resolveTopLevelPartsOrder(chatJsonValue);
       const partsMeta = buildPartsMeta(chatJsonValue);
       const itemSchema = buildArrayItemSchema(chatJsonValue, partKey);
-      const makeRequest = makeRequestFactory(id, settings);
+      const makeRequest = makeRequestFactory(id, settings, { instructName: transportInstructName });
 
       const redactedTracker = redactTrackerArrayItemValue(currentTracker, partKey, index);
       appendCurrentTrackerSnapshot(
@@ -843,10 +1257,10 @@ export function createTrackerActions(options: {
         : '';
 
       if (settings.promptEngineeringMode === PromptEngineeringMode.NATIVE) {
-        messages.push({
-          role: 'user',
-          content: `${settings.prompt}\n\nRegenerate ONLY the ${partKey} item with ${idKey} "${idValue}" as an object under key "item". Return a single JSON object matching the provided schema.${preserveLine}\n\nIMPORTANT: Generate a fresh item; the previous values have been intentionally omitted and must not be repeated.`,
-        } as any);
+        insertTrackerInstructionMessage(
+          messages,
+          `${settings.prompt}\n\nRegenerate ONLY the ${partKey} item with ${idKey} "${idValue}" as an object under key "item". Return a single JSON object matching the provided schema.${preserveLine}\n\nIMPORTANT: Generate a fresh item; the previous values have been intentionally omitted and must not be repeated.`,
+        );
         const result = await makeRequest(messages, {
           json_schema: { name: 'SceneTrackerItem', strict: true, value: itemSchema },
         });
@@ -912,7 +1326,7 @@ export function createTrackerActions(options: {
     try {
       fieldButton?.classList.add('spinning');
 
-      const { message, settings, chatJsonValue, chatHtmlValue, messages } = await prepareTrackerGeneration(id);
+      const { message, settings, chatJsonValue, chatHtmlValue, messages, transportInstructName } = await prepareTrackerGeneration(id);
       const currentTracker = message?.extra?.[EXTENSION_KEY]?.[CHAT_MESSAGE_SCHEMA_VALUE_KEY];
       if (!currentTracker || typeof currentTracker !== 'object') {
         throw new Error('No existing tracker found for this message. Generate a full tracker first.');
@@ -944,7 +1358,7 @@ export function createTrackerActions(options: {
       const partsOrder = resolveTopLevelPartsOrder(chatJsonValue);
       const partsMeta = buildPartsMeta(chatJsonValue);
       const fieldSchema = buildArrayItemFieldSchema(chatJsonValue, partKey, fieldKey);
-      const makeRequest = makeRequestFactory(id, settings);
+      const makeRequest = makeRequestFactory(id, settings, { instructName: transportInstructName });
 
       appendCurrentTrackerSnapshot(
         messages as any,
@@ -966,10 +1380,10 @@ export function createTrackerActions(options: {
       let fieldResponse: any;
 
       if (settings.promptEngineeringMode === PromptEngineeringMode.NATIVE) {
-        messages.push({
-          role: 'user',
-          content: `${settings.prompt}\n\nRegenerate ONLY ${partKey}[${index}].${fieldKey}. Return a single JSON object with key "value" that matches the provided schema. Do not change or rename the array item; only update that field. IMPORTANT: Generate a fresh value; the previous value has been intentionally omitted and must not be repeated.`,
-        } as any);
+        insertTrackerInstructionMessage(
+          messages,
+          `${settings.prompt}\n\nRegenerate ONLY ${partKey}[${index}].${fieldKey}. Return a single JSON object with key "value" that matches the provided schema. Do not change or rename the array item; only update that field. IMPORTANT: Generate a fresh value; the previous value has been intentionally omitted and must not be repeated.`,
+        );
         const result = await makeRequest(messages, {
           json_schema: { name: 'SceneTrackerItemField', strict: true, value: fieldSchema },
         });
@@ -1053,7 +1467,7 @@ export function createTrackerActions(options: {
   async function generateTracker(id: number, options?: { silent?: boolean }) {
     const settings = settingsManager.getSettings();
     if (shouldSkipTrackerGeneration(id, settings, (message) => st_echo('info', message), options?.silent)) {
-      return;
+      return false;
     }
 
     if (settings.sequentialPartGeneration) {
@@ -1174,6 +1588,7 @@ export function createTrackerActions(options: {
   }
 
   return {
+    cancelTracker,
     deleteTracker,
     editTracker,
     generateTracker,
@@ -1186,6 +1601,10 @@ export function createTrackerActions(options: {
     generateTrackerArrayItemFieldByIdentity,
     modifyChatMetadata,
     renderExtensionTemplates,
+    /** Lets outgoing auto mode tag zTracker-owned request starts without affecting manual generation flows. */
+    setBeforeRequestStartHook(callback?: () => void) {
+      beforeRequestStartHook = callback;
+    },
   };
 }
 

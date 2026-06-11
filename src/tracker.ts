@@ -501,7 +501,7 @@ export function includeZTrackerMessages<T extends Message | ChatMessage>(
           value: true,
         });
         copyMessages.splice(
-          insertionIndex + 1,
+          insertionIndex - 1,
           0,
           embeddedTrackerMessage,
         );

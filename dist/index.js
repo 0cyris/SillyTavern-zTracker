@@ -5974,7 +5974,7 @@ function includeZTrackerMessages(messages, settings) {
         Object.defineProperty(embeddedTrackerMessage, EMBEDDED_TRACKER_SNAPSHOT_MARKER, {
           value: true
         });
-        copyMessages.splice(insertionIndex + 1, 0, embeddedTrackerMessage);
+        copyMessages.splice(insertionIndex - 1, 0, embeddedTrackerMessage);
       }
     }
   }

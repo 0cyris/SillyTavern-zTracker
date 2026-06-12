@@ -1981,7 +1981,7 @@ var TrackerInjectionSection = function TrackerInjectionSection(_ref) {
       className: "setting-row",
       children: [(0, jsx_runtime_1.jsx)("label", {
         title: "Where to embed zTracker snapshots in normal generations. This affects generate_interceptor only, after SillyTavern has already built the live prompt chat array.",
-        children: "Embed zTracker snapshots as"
+        children: "Embed zTracker snapshots at the end or start of the chat message?"
       }), (0, jsx_runtime_1.jsxs)("select", {
         className: "text_pole",
         title: "Only affects embedding into the generation chat array after SillyTavern prompt assembly (generate_interceptor), not tracker generation.",
@@ -1998,6 +1998,9 @@ var TrackerInjectionSection = function TrackerInjectionSection(_ref) {
           value: "end",
           children: "End"
         })]
+      }), (0, jsx_runtime_1.jsx)("div", {
+        className: "notes",
+        children: "Embedding at the end will shift prompt depth up. Meaning the last messages will be at depth 2 instead of 1, and so on. Embedding at the start keeps the most recent messages at the same depth as they would be without embedding, but may be less intuitive as the embedded snapshot will be separated from the most recent messages."
       })]
     }), (0, jsx_runtime_1.jsxs)("div", {
       className: "setting-row",
@@ -5891,6 +5894,7 @@ function includeZTrackerMessages(messages, settings) {
   var options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
   // SillyTavern sometimes keeps speaker attribution only on source.name.
   // Promote it onto cloned chat turns so instruct-mode prompt assembly can still emit named dialogue.
+  var embeddingdepth = settings.embedZtrackerLocation === 'end' ? 1 : -1;
   var copyMessages = structuredClone(messages).map(function (message) {
     var _message$source2;
     var fallbackName = typeof message.name === 'string' && message.name.trim() ? undefined : typeof ((_message$source2 = message.source) === null || _message$source2 === void 0 ? void 0 : _message$source2.name) === 'string' && message.source.name.trim() ? message.source.name : undefined;
@@ -5996,7 +6000,7 @@ function includeZTrackerMessages(messages, settings) {
         Object.defineProperty(embeddedTrackerMessage, EMBEDDED_TRACKER_SNAPSHOT_MARKER, {
           value: true
         });
-        copyMessages.splice(insertionIndex - 1, 0, embeddedTrackerMessage);
+        copyMessages.splice(insertionIndex + embeddingdepth, 0, embeddedTrackerMessage);
       }
     }
   }

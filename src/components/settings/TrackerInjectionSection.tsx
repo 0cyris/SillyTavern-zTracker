@@ -51,7 +51,7 @@ export const TrackerInjectionSection: FC<SettingsSectionProps> = ({ settings, up
 
       <div className="setting-row">
         <label title="Where to embed zTracker snapshots in normal generations. This affects generate_interceptor only, after SillyTavern has already built the live prompt chat array.">
-          Embed zTracker snapshots as
+          Embed zTracker snapshots at the end or start of the chat message?
         </label>
         <select
           className="text_pole"
@@ -66,6 +66,9 @@ export const TrackerInjectionSection: FC<SettingsSectionProps> = ({ settings, up
           <option value="start">Start</option>
           <option value="end">End</option>
         </select>
+        <div className="notes">
+           Embedding at the end will shift prompt depth up. Meaning the last messages will be at depth 2 instead of 1, and so on. Embedding at the start keeps the most recent messages at the same depth as they would be without embedding, but may be less intuitive as the embedded snapshot will be separated from the most recent messages.
+        </div>
       </div>
 
       <div className="setting-row">

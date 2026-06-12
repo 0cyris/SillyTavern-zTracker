@@ -366,7 +366,7 @@ export function includeZTrackerMessages<T extends Message | ChatMessage>(
   if (settings.includeLastXZTrackerMessages > 0) {
     for (let i = 0; i < settings.includeLastXZTrackerMessages; i++) {
       let foundMessage: T | null = null;
-      let foundIndex = -1;
+      let foundIndex = 0;
       // SillyTavern may pass a chat array that ends on the most recent user message
       // (e.g. Options → Regenerate can produce a 2-message prompt). We must consider
       // the last message as a valid tracker source.

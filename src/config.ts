@@ -83,6 +83,7 @@ export interface ExtensionSettings {
   embedZTrackerRole: 'user' | 'assistant' | 'system';
   /** When true, embedded tracker snapshots use the snapshot header as a speaker name instead of a content prefix. */
   embedZTrackerAsCharacter: boolean;
+  embedZtrackerLocation: 'start' | 'end';
 
   /**
    * Controls how embedded zTracker snapshots are transformed (regex find/replace).

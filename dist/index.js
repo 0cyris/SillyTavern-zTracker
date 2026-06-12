@@ -1924,7 +1924,7 @@ var settings_numeric_js_1 = __webpack_require__(/*! ../../settings-numeric.js */
 var EmbedSnapshotTransformSection_js_1 = __webpack_require__(/*! ./EmbedSnapshotTransformSection.js */ "./src/components/settings/EmbedSnapshotTransformSection.tsx");
 // Renders settings that only affect how tracker snapshots are injected into normal generations.
 var TrackerInjectionSection = function TrackerInjectionSection(_ref) {
-  var _settings$embedZTrack, _settings$embedZTrack2;
+  var _settings$embedZTrack, _settings$embedZtrack, _settings$embedZTrack2;
   var settings = _ref.settings,
     updateAndRefresh = _ref.updateAndRefresh;
   return (0, jsx_runtime_1.jsxs)(jsx_runtime_1.Fragment, {
@@ -1976,6 +1976,28 @@ var TrackerInjectionSection = function TrackerInjectionSection(_ref) {
       }), (0, jsx_runtime_1.jsx)("div", {
         className: "notes",
         children: "In Text Completion chats, assistant-role snapshots stay as assistant turns when zTracker can keep a clear reply cue, such as a host-confirmed solo speaker or trailing assistant prefill, and only inline into the final user turn for ambiguous terminal no-prefill cases. Confirmed single-speaker terminal fallbacks still use a raw assistant block so the prompt can end on the real assistant reply cue."
+      })]
+    }), (0, jsx_runtime_1.jsxs)("div", {
+      className: "setting-row",
+      children: [(0, jsx_runtime_1.jsx)("label", {
+        title: "Where to embed zTracker snapshots in normal generations. This affects generate_interceptor only, after SillyTavern has already built the live prompt chat array.",
+        children: "Embed zTracker snapshots as"
+      }), (0, jsx_runtime_1.jsxs)("select", {
+        className: "text_pole",
+        title: "Only affects embedding into the generation chat array after SillyTavern prompt assembly (generate_interceptor), not tracker generation.",
+        value: (_settings$embedZtrack = settings.embedZtrackerLocation) !== null && _settings$embedZtrack !== void 0 ? _settings$embedZtrack : 'end',
+        onChange: function onChange(e) {
+          return updateAndRefresh(function (s) {
+            s.embedZtrackerLocation = e.target.value;
+          });
+        },
+        children: [(0, jsx_runtime_1.jsx)("option", {
+          value: "start",
+          children: "Start"
+        }), (0, jsx_runtime_1.jsx)("option", {
+          value: "end",
+          children: "End"
+        })]
       })]
     }), (0, jsx_runtime_1.jsxs)("div", {
       className: "setting-row",

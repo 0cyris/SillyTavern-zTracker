@@ -50,6 +50,25 @@ export const TrackerInjectionSection: FC<SettingsSectionProps> = ({ settings, up
       </div>
 
       <div className="setting-row">
+        <label title="Where to embed zTracker snapshots in normal generations. This affects generate_interceptor only, after SillyTavern has already built the live prompt chat array.">
+          Embed zTracker snapshots as
+        </label>
+        <select
+          className="text_pole"
+          title="Only affects embedding into the generation chat array after SillyTavern prompt assembly (generate_interceptor), not tracker generation."
+          value={settings.embedZtrackerLocation ?? 'end'}
+          onChange={(e) =>
+            updateAndRefresh((s) => {
+              s.embedZtrackerLocation = e.target.value as typeof s.embedZtrackerLocation;
+            })
+          }
+        >
+          <option value="start">Start</option>
+          <option value="end">End</option>
+        </select>
+      </div>
+
+      <div className="setting-row">
         <label title="When enabled, the tracker header is used as the injected speaker name instead of a content prefix when zTracker can keep a normal standalone injected message. Text-completion terminal assistant fallbacks still keep the tracker label in raw content so the prompt can end on the real assistant reply cue.">
           Inject as virtual character
         </label>

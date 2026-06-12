@@ -5894,7 +5894,7 @@ function includeZTrackerMessages(messages, settings) {
   var options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
   // SillyTavern sometimes keeps speaker attribution only on source.name.
   // Promote it onto cloned chat turns so instruct-mode prompt assembly can still emit named dialogue.
-  var embeddingdepth = settings.embedZtrackerLocation === 'end' ? 1 : -1;
+  var embeddingdepth = settings.embedZtrackerLocation === 'end' ? 1 : 0;
   var copyMessages = structuredClone(messages).map(function (message) {
     var _message$source2;
     var fallbackName = typeof message.name === 'string' && message.name.trim() ? undefined : typeof ((_message$source2 = message.source) === null || _message$source2 === void 0 ? void 0 : _message$source2.name) === 'string' && message.source.name.trim() ? message.source.name : undefined;
